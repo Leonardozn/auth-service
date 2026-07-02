@@ -145,7 +145,56 @@ test('AuthController.refresh — returns 401 on an invalid refresh token', async
 	assert.equal(capturedStatus, 401)
 	assert.deepEqual(capturedBody, {
 		success: false,
-		message: 'Invalid or expired refresh token.',
+		message: 'Invalid or expired token.',
+		statusCode: 401,
+		content: null
+	})
+})
+
+test('AuthController.validate — returns 200 with the user for a valid access token', async () => {
+	const repository = MockRepository.getInstance()
+	const { DateTime } = luxon
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'valid-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'some-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const controller = AuthController.getInstance()
+	const req = { body: { token: 'valid-access-token' } }
+	let capturedStatus, capturedBody
+	const res = {
+		status(code) { capturedStatus = code; return this },
+		json(body)   { capturedBody  = body;  return this },
+	}
+
+	await controller.validate(req, res)
+
+	assert.equal(capturedStatus, 200)
+	assert.equal(capturedBody.success, true)
+	assert.equal(capturedBody.content.user.name, 'Ada')
+	assert.equal(capturedBody.content.user.password, undefined)
+})
+
+test('AuthController.validate — returns 401 on an invalid access token', async () => {
+	const controller = AuthController.getInstance()
+	const req = { body: { token: 'missing-token' } }
+	let capturedStatus, capturedBody
+	const res = {
+		status(code) { capturedStatus = code; return this },
+		json(body)   { capturedBody  = body;  return this },
+	}
+
+	await controller.validate(req, res)
+
+	assert.equal(capturedStatus, 401)
+	assert.deepEqual(capturedBody, {
+		success: false,
+		message: 'Invalid or expired token.',
 		statusCode: 401,
 		content: null
 	})

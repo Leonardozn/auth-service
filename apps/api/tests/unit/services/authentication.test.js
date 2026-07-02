@@ -148,3 +148,55 @@ test('AuthenticationService.refresh() — throws when the refresh token has expi
 		{ name: 'UnauthorizedError' }
 	)
 })
+
+test('AuthenticationService.validate() — returns the user for a valid, non-expired access token', async () => {
+	const repository = MockRepository.getInstance()
+	const { DateTime } = luxon
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'valid-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'some-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const service = AuthenticationService.getInstance()
+
+	const result = await service.validate({ body: { token: 'valid-access-token' } })
+
+	assert.equal(result.user.name, 'Ada')
+	assert.equal(result.user.email, 'ada@example.com')
+	assert.equal(result.user.password, undefined)
+})
+
+test('AuthenticationService.validate() — throws when the access token does not exist', async () => {
+	const service = AuthenticationService.getInstance()
+
+	await assert.rejects(
+		() => service.validate({ body: { token: 'missing-token' } }),
+		{ name: 'UnauthorizedError' }
+	)
+})
+
+test('AuthenticationService.validate() — throws when the access token has expired', async () => {
+	const repository = MockRepository.getInstance()
+	const { DateTime } = luxon
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'expired-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').minus({ minutes: 1 }).toJSDate(),
+			refreshToken: 'some-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const service = AuthenticationService.getInstance()
+
+	await assert.rejects(
+		() => service.validate({ body: { token: 'expired-access-token' } }),
+		{ name: 'UnauthorizedError' }
+	)
+})
