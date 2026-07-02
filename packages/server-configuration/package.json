@@ -1,0 +1,9 @@
+{
+	"name": "@auth-service/server-configuration",
+	"version": "1.0.0",
+	"description": "Server configuration.",
+	"main": "index",
+	"dependencies": {
+		"express": "4.22.1"
+	}
+}

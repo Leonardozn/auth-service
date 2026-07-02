@@ -1,0 +1,6 @@
+{
+	"name": "@auth-service/prototypes",
+	"version": "1.0.0",
+	"description": "List of prototypes to the context of project.",
+	"main": "index"
+}

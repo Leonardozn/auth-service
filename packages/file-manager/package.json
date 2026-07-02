@@ -1,0 +1,9 @@
+{
+	"name": "@auth-service/file-manager",
+	"version": "1.0.0",
+	"main": "index.js",
+	"dependencies": {
+		"multer": "2.1.1",
+		"@auth-service/env-variables": "*"
+	}
+}

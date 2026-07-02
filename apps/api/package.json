@@ -1,0 +1,26 @@
+{
+  "name": "api",
+  "version": "1.0.0",
+  "main": "index.js",
+  "description": "",
+  "scripts": {
+    "start": "node .",
+    "test": "node --test \"tests/unit/**/*.test.js\" \"tests/e2e/**/*.test.js\" \"tests/smoke/**/*.test.js\" \"tests/crud/**/*.test.js\""
+  },
+  "dependencies": {
+    "@auth-service/server-configuration": "*",
+    "@auth-service/cors-policy": "*",
+    "@auth-service/request-logger": "*",
+    "@auth-service/env-variables": "*",
+    "@auth-service/prototypes": "*",
+    "@auth-service/handle-response": "*",
+    "@auth-service/handle-errors": "*",
+    "@auth-service/external-api-config": "*",
+    "@auth-service/data-encrypt": "*",
+    "@auth-service/documentation-config": "*",
+    "@auth-service/file-manager": "*",
+    "@auth-service/db-connections": "*",
+    "@auth-service/data-validator": "*",
+    "@auth-service/entity-queries": "*"
+  }
+}

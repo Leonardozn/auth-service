@@ -1,0 +1,11 @@
+{
+	"name": "@auth-service/data-encrypt",
+	"version": "1.0.0",
+	"description": "Methods to encrypt data.",
+	"main": "index",
+	"dependencies": {
+		"bcryptjs": "3.0.3",
+		"jsonwebtoken": "9.0.3",
+		"@auth-service/handle-errors": "*"
+	}
+}

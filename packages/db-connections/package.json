@@ -1,0 +1,9 @@
+{
+	"name": "@auth-service/db-connections",
+	"version": "1.0.0",
+	"description": "Connection to differet databases.",
+	"main": "index",
+	"dependencies": {
+		"mongoose": "8.23.1"
+	}
+}

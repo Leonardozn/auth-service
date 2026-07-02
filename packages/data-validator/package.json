@@ -1,0 +1,12 @@
+{
+	"name": "@auth-service/data-validator",
+	"version": "1.0.0",
+	"description": "Validation of entry data.",
+	"main": "index",
+	"dependencies": {
+		"zod": "3.23.8",
+		"bson": "6.10.4",
+		"luxon": "3.5.0",
+		"@auth-service/entity-queries": "*"
+	}
+}
