@@ -29,6 +29,7 @@ class AuthController {
 		this.login = this.login.bind(this)
 		this.refresh = this.refresh.bind(this)
 		this.validate = this.validate.bind(this)
+		this.logout = this.logout.bind(this)
 	}
 
 	static getInstance() {
@@ -81,6 +82,20 @@ class AuthController {
 	async validate(req, res) {
 		try {
 			const result = await this.authenticationService.validate({ body: req.body })
+			const response = this.handleResponseHandler.buildResponse(result)
+
+			res.status(response[this.responseBody.STATUS]).json(response)
+		} catch (error) {
+			console.error(error)
+			const response = this.handleResponseHandler.buildResponse(error)
+
+			res.status(response[this.responseBody.STATUS]).json(response)
+		}
+	}
+
+	async logout(req, res) {
+		try {
+			const result = await this.authenticationService.logout({ authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(result)
 
 			res.status(response[this.responseBody.STATUS]).json(response)
