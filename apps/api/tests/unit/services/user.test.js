@@ -4,14 +4,17 @@ const MockRepository = require('../../support/mock-repository-preload')
 const UserService = require('../../../src/services/user')
 
 // A complete record matching every field declared for 'user' in settings.json - used as
-// both the create payload and the expectation, since contract filtering + create/update
-// validation are value-preserving for these types (see data-validator/contract templates).
+// the create/update payload.
 const SAMPLE = {
 		"name": "sample text",
 		"email": "sample text",
 		"password": "sample text",
 		"role": "64b0c0ffee1234567890abcd"
 	}
+
+// The User contract never exposes password (security: even hashed, it must never leave the
+// API) - this is what every service response is expected to look like.
+const EXPECTED = { name: SAMPLE.name, email: SAMPLE.email, role: SAMPLE.role }
 
 const SEED_ID = '64b0c0ffee1234567890abce'
 
@@ -31,7 +34,7 @@ test('user service add() — creates and returns the contract-filtered record', 
 
 	const result = await service.add({ body: SAMPLE })
 
-	assert.deepEqual(result, SAMPLE)
+	assert.deepEqual(result, EXPECTED)
 })
 
 test('user service findOne() — returns the contract-filtered record by id', async () => {
@@ -40,7 +43,7 @@ test('user service findOne() — returns the contract-filtered record by id', as
 
 	const result = await service.findOne({ id: SEED_ID })
 
-	assert.deepEqual(result, SAMPLE)
+	assert.deepEqual(result, EXPECTED)
 })
 
 test('user service findOne() — throws when the record does not exist', async () => {
@@ -57,7 +60,7 @@ test('user service list() — returns count and contract-filtered records', asyn
 	const result = await service.list({})
 
 	assert.equal(result.count, 1)
-	assert.deepEqual(result.records, [SAMPLE])
+	assert.deepEqual(result.records, [EXPECTED])
 })
 
 test('user service update() — patches and returns the contract-filtered record', async () => {
@@ -66,7 +69,7 @@ test('user service update() — patches and returns the contract-filtered record
 
 	const result = await service.update({ id: SEED_ID, body: SAMPLE })
 
-	assert.deepEqual(result, SAMPLE)
+	assert.deepEqual(result, EXPECTED)
 })
 
 test('user service replace() — replaces and returns the contract-filtered record', async () => {
@@ -75,7 +78,7 @@ test('user service replace() — replaces and returns the contract-filtered reco
 
 	const result = await service.replace({ id: SEED_ID, body: SAMPLE })
 
-	assert.deepEqual(result, SAMPLE)
+	assert.deepEqual(result, EXPECTED)
 })
 
 test('user service remove() — deletes the record', async () => {

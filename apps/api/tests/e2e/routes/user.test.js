@@ -11,6 +11,10 @@ const SAMPLE = {
 		"role": "64b0c0ffee1234567890abcd"
 	}
 
+// The User contract never exposes password (security: even hashed, it must never leave the
+// API) - this is what every response is expected to look like.
+const EXPECTED = { name: SAMPLE.name, email: SAMPLE.email, role: SAMPLE.role }
+
 const SEED_ID = '64b0c0ffee1234567890abcf'
 
 function seededEnv() {
@@ -42,7 +46,7 @@ test('user routes — GET by id returns the seeded record', async () => {
 		const res = await app.request('GET', `${app.path}/user/${SEED_ID}`)
 
 		assert.equal(res.status, 200)
-		assert.deepEqual(res.body.content, SAMPLE)
+		assert.deepEqual(res.body.content, EXPECTED)
 	} finally {
 		await app.stop()
 	}
@@ -69,7 +73,7 @@ test('user routes — GET list returns the envelope shape', async () => {
 
 		assert.equal(res.status, 200)
 		assert.equal(res.body.content.count, 1)
-		assert.deepEqual(res.body.content.records, [SAMPLE])
+		assert.deepEqual(res.body.content.records, [EXPECTED])
 	} finally {
 		await app.stop()
 	}
@@ -82,7 +86,7 @@ test('user routes — PATCH updates the seeded record', async () => {
 		const res = await app.request('PATCH', `${app.path}/user/${SEED_ID}`, SAMPLE)
 
 		assert.equal(res.status, 200)
-		assert.deepEqual(res.body.content, SAMPLE)
+		assert.deepEqual(res.body.content, EXPECTED)
 	} finally {
 		await app.stop()
 	}
@@ -95,7 +99,7 @@ test('user routes — PUT replaces the seeded record', async () => {
 		const res = await app.request('PUT', `${app.path}/user/${SEED_ID}`, SAMPLE)
 
 		assert.equal(res.status, 200)
-		assert.deepEqual(res.body.content, SAMPLE)
+		assert.deepEqual(res.body.content, EXPECTED)
 	} finally {
 		await app.stop()
 	}

@@ -14,7 +14,6 @@ class UserContract {
 		return {
 			name: true,
 			email: true,
-			password: true,
 			role: true,
 		}
 	}

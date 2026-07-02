@@ -26,7 +26,7 @@ test('AuthController.register — returns 201 with the created user on success',
 	assert.equal(capturedBody.statusCode, 201)
 	assert.equal(capturedBody.content.user.name, 'Ada')
 	assert.equal(capturedBody.content.user.email, 'ada@example.com')
-	assert.notEqual(capturedBody.content.user.password, 'Sup3rSecret!')
+	assert.equal(capturedBody.content.user.password, undefined)
 })
 
 test('AuthController.register — returns 400 when the email is already registered', async () => {
@@ -73,6 +73,7 @@ test('AuthController.login — returns 200 with tokens and the user on valid cre
 	assert.equal(typeof capturedBody.content.refreshToken, 'string')
 	assert.equal(capturedBody.content.user.name, 'Ada')
 	assert.equal(capturedBody.content.user.email, 'ada@example.com')
+	assert.equal(capturedBody.content.user.password, undefined)
 })
 
 test('AuthController.login — returns 401 on invalid credentials', async () => {
