@@ -16,6 +16,7 @@
     "@auth-service/handle-response": "*",
     "@auth-service/handle-errors": "*",
     "@auth-service/external-api-config": "*",
+    "@auth-service/email-resend": "*",
     "@auth-service/data-encrypt": "*",
     "@auth-service/documentation-config": "*",
     "@auth-service/file-manager": "*",
