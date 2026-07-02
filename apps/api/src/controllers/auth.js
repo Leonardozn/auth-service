@@ -26,6 +26,7 @@ class AuthController {
 		this.authenticationService = AuthenticationService.getInstance()
 
 		this.register = this.register.bind(this)
+		this.login = this.login.bind(this)
 	}
 
 	static getInstance() {
@@ -37,6 +38,20 @@ class AuthController {
 		try {
 			const result = await this.authenticationService.register({ body: req.body })
 			const response = this.handleResponseHandler.buildResponse(result, HttpStatus.CREATED)
+
+			res.status(response[this.responseBody.STATUS]).json(response)
+		} catch (error) {
+			console.error(error)
+			const response = this.handleResponseHandler.buildResponse(error)
+
+			res.status(response[this.responseBody.STATUS]).json(response)
+		}
+	}
+
+	async login(req, res) {
+		try {
+			const result = await this.authenticationService.login({ body: req.body })
+			const response = this.handleResponseHandler.buildResponse(result)
 
 			res.status(response[this.responseBody.STATUS]).json(response)
 		} catch (error) {

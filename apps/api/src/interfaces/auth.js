@@ -20,6 +20,11 @@ class AuthInterfaces {
 	/**
 	 * @private
 	 */
+	loginInterface
+
+	/**
+	 * @private
+	 */
 	types
 
 	constructor() {
@@ -28,6 +33,11 @@ class AuthInterfaces {
 
 		this.registerInterface = this.dataValidatorHandler.validate({
 			name: { type: this.types.string },
+			email: { type: this.types.string },
+			password: { type: this.types.string }
+		})
+
+		this.loginInterface = this.dataValidatorHandler.validate({
 			email: { type: this.types.string },
 			password: { type: this.types.string }
 		})
@@ -40,6 +50,10 @@ class AuthInterfaces {
 
 	getRegisterInterface() {
 		return this.registerInterface
+	}
+
+	getLoginInterface() {
+		return this.loginInterface
 	}
 }
 
