@@ -69,8 +69,10 @@ class AuthenticationService {
 			generateOpaqueToken: this.generateOpaqueToken,
 			computeExpiryDate: this.computeExpiryDate,
 			luxon: this.luxon,
-			sessionTokenDuration: envVariables.SESSION_TOKEN_DEFAULT_TIME,
-			refreshTokenDuration: envVariables.REFRESH_TOKEN_DEFAULT_TIME
+			// Fallbacks match the documented defaults (DOCUMENTATION.md "Variables de entorno") -
+			// keeps login working (and testable without a local .env) even before these are set.
+			sessionTokenDuration: envVariables.SESSION_TOKEN_DEFAULT_TIME || '15m',
+			refreshTokenDuration: envVariables.REFRESH_TOKEN_DEFAULT_TIME || '5d'
 		})
 
 		// Step 3: persist a new session for this login
