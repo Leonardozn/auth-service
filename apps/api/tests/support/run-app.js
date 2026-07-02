@@ -8,8 +8,16 @@
 const { spawn } = require('node:child_process')
 const net = require('node:net')
 const path = require('node:path')
+// Loads the real root .env as a side effect (same package the app itself uses), so
+// API_PATH here matches what the spawned child will resolve to - avoids the two ever
+// silently disagreeing about where routes are mounted.
+const envVariables = require('@auth-service/env-variables')
 
 const APP_ROOT = path.join(__dirname, '..', '..')
+// The app's own index.js assumes it's launched from the monorepo root (see its Swagger
+// apiPaths: './apps/api/src/routes/*.js', and the root .env that env-variables loads via
+// process.cwd()) - the real "start" script runs it the same way, so the subprocess must too.
+const PROJECT_ROOT = path.join(APP_ROOT, '..', '..')
 const PRELOAD = path.join(__dirname, 'mock-repository-preload.js')
 
 function getFreePort() {
@@ -51,11 +59,11 @@ async function runApp(extraEnv = {}) {
 		...extraEnv
 	}
 
-	const appPath = env.API_PATH || ''
+	const appPath = env.API_PATH || envVariables.API_PATH || ''
 	const baseUrl = `http://localhost:${port}`
 
-	const child = spawn(process.execPath, ['--require', PRELOAD, 'index.js'], {
-		cwd: APP_ROOT,
+	const child = spawn(process.execPath, ['--require', PRELOAD, 'apps/api/index.js'], {
+		cwd: PROJECT_ROOT,
 		env,
 		stdio: 'pipe'
 	})
