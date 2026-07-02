@@ -37,7 +37,8 @@ test('user create — complete payload round-trips through the full envelope', a
 			success: true,
 			message: 'Success!',
 			statusCode: 200,
-			content: RECORDS[0]
+			// The User contract never exposes password (security), even though it was submitted.
+			content: { name: RECORDS[0].name, email: RECORDS[0].email, role: RECORDS[0].role }
 		})
 	} finally {
 		await app.stop()

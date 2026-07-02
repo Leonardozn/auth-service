@@ -17,7 +17,7 @@ test('AuthenticationService.register() — creates a user with the default role 
 
 	assert.equal(result.user.name, 'Ada')
 	assert.equal(result.user.email, 'ada@example.com')
-	assert.notEqual(result.user.password, 'Sup3rSecret!')
+	assert.equal(result.user.password, undefined)
 	assert.ok(result.user.role)
 })
 
@@ -56,6 +56,7 @@ test('AuthenticationService.login() — returns tokens and the user on valid cre
 	assert.notEqual(result.token, result.refreshToken)
 	assert.equal(result.user.name, 'Ada')
 	assert.equal(result.user.email, 'ada@example.com')
+	assert.equal(result.user.password, undefined)
 
 	const sessions = await repository.list('session', { query: {} })
 	assert.equal(sessions.count, 1)

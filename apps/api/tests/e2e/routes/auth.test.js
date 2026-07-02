@@ -45,7 +45,7 @@ test('auth routes — POST /auth/register creates a user with the default role',
 		assert.equal(res.body.content.user.name, 'Ada')
 		assert.equal(res.body.content.user.email, 'ada@example.com')
 		assert.equal(res.body.content.user.role, '64b0c0ffee1234567890abee')
-		assert.notEqual(res.body.content.user.password, 'Sup3rSecret!')
+		assert.equal(res.body.content.user.password, undefined)
 	} finally {
 		await app.stop()
 	}
@@ -94,6 +94,7 @@ test('auth routes — POST /auth/login returns tokens and the user on valid cred
 		assert.equal(typeof res.body.content.refreshToken, 'string')
 		assert.equal(res.body.content.user.name, 'Ada')
 		assert.equal(res.body.content.user.email, 'ada@example.com')
+		assert.equal(res.body.content.user.password, undefined)
 	} finally {
 		await app.stop()
 	}
