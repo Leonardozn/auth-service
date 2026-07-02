@@ -1,0 +1,9 @@
+{
+	"name": "@auth-service/handle-response",
+	"version": "1.0.0",
+	"description": "Build contract to response.",
+	"main": "index",
+	"dependencies": {
+		"@auth-service/handle-errors": "*"
+	}
+}

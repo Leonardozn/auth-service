@@ -1,0 +1,9 @@
+{
+	"name": "@auth-service/request-logger",
+	"version": "1.0.0",
+	"description": "Request logger.",
+	"main": "index",
+	"dependencies": {
+		"morgan": "1.10.1"
+	}
+}
