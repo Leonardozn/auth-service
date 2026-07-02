@@ -52,9 +52,10 @@ class HandleResponse {
 	 * - Otherwise, returns a ResponseOk with the given payload as `content`.
 	 *
 	 * @param { Error|Object } data - Error to serialize or payload to wrap in a success response.
+	 * @param { number } [status] - Success status code override (ignored for Error payloads). Defaults to 200.
 	 * @returns { ResponseOk | ResponseError } Standardized response object.
 	 */
-	buildResponse(data) {
+	buildResponse(data, status = HttpStatus.OK) {
 		if (data instanceof Error) {
 			const statusCode = this.getStatusCode(data)
 			const errorMessage = this.getErrorMessage(data)
@@ -71,7 +72,7 @@ class HandleResponse {
 		return {
 			[ResponseBody.SUCCESS]: true,
 			[ResponseBody.MESSAGE]: 'Success!',
-			[ResponseBody.STATUS]: HttpStatus.OK,
+			[ResponseBody.STATUS]: status,
 			[ResponseBody.CONTENT]: data
 		}
 	}

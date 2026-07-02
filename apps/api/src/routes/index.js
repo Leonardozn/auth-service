@@ -3,6 +3,7 @@ const SessionRouter = require('./session')
 const UserRouter = require('./user')
 const RoleRouter = require('./role')
 const HealthRouter = require('./health')
+const AuthRouter = require('./auth')
 
 class Routes {	/**
 	 * @private
@@ -36,12 +37,18 @@ class Routes {	/**
 	 */
 	healthRouter
 
+	/**
+	 * @private
+	 */
+	authRouter
+
 	constructor() {
 		this.healthRouter = HealthRouter.getInstance().getRoutes()
 		this.roleRouter = RoleRouter.getInstance().getRoutes()
 		this.userRouter = UserRouter.getInstance().getRoutes()
 		this.sessionRouter = SessionRouter.getInstance().getRoutes()
 		this.password_reset_tokenRouter = Password_reset_tokenRouter.getInstance().getRoutes()
+		this.authRouter = AuthRouter.getInstance().getRoutes()
 	}
 
 	static getInstance() {
@@ -55,7 +62,8 @@ class Routes {	/**
 			sessionRouter: this.sessionRouter,
 			userRouter: this.userRouter,
 			roleRouter: this.roleRouter,
-			healthRouter: this.healthRouter
+			healthRouter: this.healthRouter,
+			authRouter: this.authRouter
 		}
 	}
 }

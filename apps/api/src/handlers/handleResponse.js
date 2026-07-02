@@ -32,8 +32,8 @@ class HandleResponseHandler {
 		return this.handleResponse.getExampleResponseFormat(status)
 	}
 
-	buildResponse(data) {
-		return this.handleResponse.buildResponse(data)
+	buildResponse(data, status) {
+		return this.handleResponse.buildResponse(data, status)
 	}
 }
 
