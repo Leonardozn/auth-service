@@ -1,0 +1,21 @@
+{
+	"name": "auth-service",
+	"version": "1.0.0",
+	"description": "",
+	"workspaces": [
+		"apps/*",
+		"packages/*"
+	],
+	"scripts": {
+		"prepare": "git config core.hooksPath .githooks",
+		"lint": "eslint .",
+		"test": "node -e \"process.exit(0)\""
+	},
+	"devDependencies": {
+		"@commitlint/cli": "21.0.2",
+		"@commitlint/config-conventional": "21.0.2",
+		"@eslint/js": "9.39.4",
+		"eslint": "9.39.4",
+		"globals": "17.4.0"
+	}
+}
