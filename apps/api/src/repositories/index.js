@@ -4,7 +4,6 @@ const FieldsModel = require('../models/fields')
 const DbTypeModel = require('../models/dbType')
 const DbNameModel = require('../models/dbName')
 const CollectionNameModel = require('../models/collectionName')
-const GeneratedModel = require('../models/generated')
 
 class Repository {
 	/**
@@ -28,8 +27,7 @@ class Repository {
 			fields: FieldsModel,
 			dbType: DbTypeModel,
 			dbName: DbNameModel,
-			collectionName: CollectionNameModel,
-			generated: GeneratedModel
+			collectionName: CollectionNameModel
 		}
 
 		this.mongooseEntityQueries = MongooseEntityQueries.getInstance()
