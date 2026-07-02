@@ -25,6 +25,11 @@ class AuthInterfaces {
 	/**
 	 * @private
 	 */
+	refreshInterface
+
+	/**
+	 * @private
+	 */
 	types
 
 	constructor() {
@@ -41,6 +46,10 @@ class AuthInterfaces {
 			email: { type: this.types.string },
 			password: { type: this.types.string }
 		})
+
+		this.refreshInterface = this.dataValidatorHandler.validate({
+			refreshToken: { type: this.types.string }
+		})
 	}
 
 	static getInstance() {
@@ -54,6 +63,10 @@ class AuthInterfaces {
 
 	getLoginInterface() {
 		return this.loginInterface
+	}
+
+	getRefreshInterface() {
+		return this.refreshInterface
 	}
 }
 

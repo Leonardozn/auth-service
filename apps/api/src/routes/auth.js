@@ -26,7 +26,8 @@ class AuthRouter {
 			modelPath: '/auth',
 			paths: [
 				{ requestMethod: 'post', path: '/register', controllerMethod: this.authController.register },
-				{ requestMethod: 'post', path: '/login', controllerMethod: this.authController.login }
+				{ requestMethod: 'post', path: '/login', controllerMethod: this.authController.login },
+				{ requestMethod: 'post', path: '/refresh', controllerMethod: this.authController.refresh }
 			]
 		}
 	}
