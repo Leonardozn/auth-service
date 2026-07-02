@@ -12,6 +12,8 @@ const IssueTokenPair = require('./commands/issueTokenPair')
 const GenerateOpaqueToken = require('./commands/generateOpaqueToken')
 const ComputeExpiryDate = require('./commands/computeExpiryDate')
 const FindSessionByToken = require('./commands/findSessionByToken')
+const ExtractBearerToken = require('./commands/extractBearerToken')
+const RemoveSessionByToken = require('./commands/removeSessionByToken')
 
 class AuthenticationService {
 	/**
@@ -35,6 +37,8 @@ class AuthenticationService {
 		this.generateOpaqueToken = GenerateOpaqueToken.getInstance()
 		this.computeExpiryDate = ComputeExpiryDate.getInstance()
 		this.findSessionByToken = FindSessionByToken.getInstance()
+		this.extractBearerToken = ExtractBearerToken.getInstance()
+		this.removeSessionByToken = RemoveSessionByToken.getInstance()
 	}
 
 	static getInstance() {
@@ -123,6 +127,16 @@ class AuthenticationService {
 		const user = await this.userService.findOne({ id: session.user })
 
 		return { user }
+	}
+
+	async logout(config = {}) {
+		// Step 1: extract the access token from the Authorization header
+		const token = this.extractBearerToken.execute({ authorizationHeader: config.authorizationHeader })
+
+		// Step 2: revoke the matching session, if any - idempotent, no error when already gone
+		await this.removeSessionByToken.execute({ repository: this.repository, tokenField: 'accessToken', token })
+
+		return null
 	}
 
 	/**

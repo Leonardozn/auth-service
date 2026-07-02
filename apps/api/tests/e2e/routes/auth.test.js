@@ -212,3 +212,78 @@ test('auth routes — POST /auth/validate rejects an invalid access token', asyn
 		await app.stop()
 	}
 })
+
+test('auth routes — POST /auth/logout revokes the session and future validation returns 401', async () => {
+	const app = await runApp(seededRoleEnv())
+
+	try {
+		await app.request('POST', `${app.path}/auth/register`, {
+			name: 'Ada',
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+		const loginRes = await app.request('POST', `${app.path}/auth/login`, {
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+		const { token } = loginRes.body.content
+
+		const logoutRes = await app.request('POST', `${app.path}/auth/logout`, undefined, { Authorization: `Bearer ${token}` })
+
+		assert.equal(logoutRes.status, 200)
+		assert.deepEqual(logoutRes.body, {
+			success: true,
+			message: 'Success!',
+			statusCode: 200,
+			content: null
+		})
+
+		const validateRes = await app.request('POST', `${app.path}/auth/validate`, { token })
+		assert.equal(validateRes.status, 401)
+	} finally {
+		await app.stop()
+	}
+})
+
+test('auth routes — POST /auth/logout is idempotent when called twice', async () => {
+	const app = await runApp(seededRoleEnv())
+
+	try {
+		await app.request('POST', `${app.path}/auth/register`, {
+			name: 'Ada',
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+		const loginRes = await app.request('POST', `${app.path}/auth/login`, {
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+		const { token } = loginRes.body.content
+
+		const first = await app.request('POST', `${app.path}/auth/logout`, undefined, { Authorization: `Bearer ${token}` })
+		const second = await app.request('POST', `${app.path}/auth/logout`, undefined, { Authorization: `Bearer ${token}` })
+
+		assert.equal(first.status, 200)
+		assert.equal(second.status, 200)
+	} finally {
+		await app.stop()
+	}
+})
+
+test('auth routes — POST /auth/logout rejects a missing Authorization header', async () => {
+	const app = await runApp()
+
+	try {
+		const res = await app.request('POST', `${app.path}/auth/logout`)
+
+		assert.equal(res.status, 401)
+		assert.deepEqual(res.body, {
+			success: false,
+			message: 'Missing or malformed Authorization header.',
+			statusCode: 401,
+			content: null
+		})
+	} finally {
+		await app.stop()
+	}
+})

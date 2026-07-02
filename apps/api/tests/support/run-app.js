@@ -83,10 +83,13 @@ ${stderr}`)
 	return {
 		baseUrl,
 		path: appPath,
-		async request(method, url, body) {
+		async request(method, url, body, headers) {
 			const res = await fetch(`${baseUrl}${url}`, {
 				method,
-				headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+				headers: {
+					...(body !== undefined ? { 'Content-Type': 'application/json' } : undefined),
+					...headers
+				},
 				body: body !== undefined ? JSON.stringify(body) : undefined
 			})
 			const payload = await res.json().catch(() => null)

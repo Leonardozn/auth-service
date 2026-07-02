@@ -200,3 +200,42 @@ test('AuthenticationService.validate() — throws when the access token has expi
 		{ name: 'UnauthorizedError' }
 	)
 })
+
+test('AuthenticationService.logout() — revokes the session matching the access token', async () => {
+	const repository = MockRepository.getInstance()
+	const { DateTime } = luxon
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'active-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'active-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const service = AuthenticationService.getInstance()
+
+	const result = await service.logout({ authorizationHeader: 'Bearer active-access-token' })
+
+	assert.equal(result, null)
+	const sessions = await repository.list('session', { query: {} })
+	assert.equal(sessions.count, 0)
+})
+
+test('AuthenticationService.logout() — is idempotent when the session is already gone', async () => {
+	const service = AuthenticationService.getInstance()
+
+	const result = await service.logout({ authorizationHeader: 'Bearer already-revoked-token' })
+
+	assert.equal(result, null)
+})
+
+test('AuthenticationService.logout() — throws when the Authorization header is missing', async () => {
+	const service = AuthenticationService.getInstance()
+
+	await assert.rejects(
+		() => service.logout({ authorizationHeader: undefined }),
+		{ name: 'UnauthorizedError' }
+	)
+})
