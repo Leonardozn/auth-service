@@ -159,7 +159,52 @@ test('auth routes — POST /auth/refresh rejects an invalid refresh token', asyn
 		assert.equal(res.status, 401)
 		assert.deepEqual(res.body, {
 			success: false,
-			message: 'Invalid or expired refresh token.',
+			message: 'Invalid or expired token.',
+			statusCode: 401,
+			content: null
+		})
+	} finally {
+		await app.stop()
+	}
+})
+
+test('auth routes — POST /auth/validate returns the user for a valid access token', async () => {
+	const app = await runApp(seededRoleEnv())
+
+	try {
+		await app.request('POST', `${app.path}/auth/register`, {
+			name: 'Ada',
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+		const loginRes = await app.request('POST', `${app.path}/auth/login`, {
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+		const { token } = loginRes.body.content
+
+		const res = await app.request('POST', `${app.path}/auth/validate`, { token })
+
+		assert.equal(res.status, 200)
+		assert.equal(res.body.success, true)
+		assert.equal(res.body.content.user.name, 'Ada')
+		assert.equal(res.body.content.user.email, 'ada@example.com')
+		assert.equal(res.body.content.user.password, undefined)
+	} finally {
+		await app.stop()
+	}
+})
+
+test('auth routes — POST /auth/validate rejects an invalid access token', async () => {
+	const app = await runApp()
+
+	try {
+		const res = await app.request('POST', `${app.path}/auth/validate`, { token: 'not-a-real-token' })
+
+		assert.equal(res.status, 401)
+		assert.deepEqual(res.body, {
+			success: false,
+			message: 'Invalid or expired token.',
 			statusCode: 401,
 			content: null
 		})

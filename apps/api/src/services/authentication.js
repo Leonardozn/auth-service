@@ -11,7 +11,7 @@ const VerifyCredentials = require('./commands/verifyCredentials')
 const IssueTokenPair = require('./commands/issueTokenPair')
 const GenerateOpaqueToken = require('./commands/generateOpaqueToken')
 const ComputeExpiryDate = require('./commands/computeExpiryDate')
-const FindSessionByRefreshToken = require('./commands/findSessionByRefreshToken')
+const FindSessionByToken = require('./commands/findSessionByToken')
 
 class AuthenticationService {
 	/**
@@ -34,7 +34,7 @@ class AuthenticationService {
 		this.issueTokenPair = IssueTokenPair.getInstance()
 		this.generateOpaqueToken = GenerateOpaqueToken.getInstance()
 		this.computeExpiryDate = ComputeExpiryDate.getInstance()
-		this.findSessionByRefreshToken = FindSessionByRefreshToken.getInstance()
+		this.findSessionByToken = FindSessionByToken.getInstance()
 	}
 
 	static getInstance() {
@@ -83,7 +83,13 @@ class AuthenticationService {
 		const { refreshToken } = this.authInterface.getRefreshInterface().parse(config.body)
 
 		// Step 1: find a still-valid session matching the given refresh token
-		const session = await this.findSessionByRefreshToken.execute({ repository: this.repository, luxon: this.luxon, refreshToken })
+		const session = await this.findSessionByToken.execute({
+			repository: this.repository,
+			luxon: this.luxon,
+			tokenField: 'refreshToken',
+			expiryField: 'refreshTokenExpiresAt',
+			token: refreshToken
+		})
 
 		// Step 2: issue a fresh access/refresh token pair, rotating the old one
 		const tokenPair = this.issueTokenPair.execute(this._tokenPairConfig())
@@ -99,6 +105,24 @@ class AuthenticationService {
 			refreshToken: tokenPair.refreshToken,
 			user
 		}
+	}
+
+	async validate(config = {}) {
+		const { token } = this.authInterface.getValidateInterface().parse(config.body)
+
+		// Step 1: find a still-valid session matching the given access token
+		const session = await this.findSessionByToken.execute({
+			repository: this.repository,
+			luxon: this.luxon,
+			tokenField: 'accessToken',
+			expiryField: 'accessTokenExpiresAt',
+			token
+		})
+
+		// Step 2: return the session's user (including role) - the caller never decodes the token itself
+		const user = await this.userService.findOne({ id: session.user })
+
+		return { user }
 	}
 
 	/**
