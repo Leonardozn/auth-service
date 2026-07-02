@@ -11,6 +11,7 @@ const VerifyCredentials = require('./commands/verifyCredentials')
 const IssueTokenPair = require('./commands/issueTokenPair')
 const GenerateOpaqueToken = require('./commands/generateOpaqueToken')
 const ComputeExpiryDate = require('./commands/computeExpiryDate')
+const FindSessionByRefreshToken = require('./commands/findSessionByRefreshToken')
 
 class AuthenticationService {
 	/**
@@ -33,6 +34,7 @@ class AuthenticationService {
 		this.issueTokenPair = IssueTokenPair.getInstance()
 		this.generateOpaqueToken = GenerateOpaqueToken.getInstance()
 		this.computeExpiryDate = ComputeExpiryDate.getInstance()
+		this.findSessionByRefreshToken = FindSessionByRefreshToken.getInstance()
 	}
 
 	static getInstance() {
@@ -65,15 +67,7 @@ class AuthenticationService {
 		const user = await this.verifyCredentials.execute({ repository: this.repository, dataEncryptHandler: this.dataEncryptHandler, email, password })
 
 		// Step 2: issue a fresh access/refresh token pair
-		const tokenPair = this.issueTokenPair.execute({
-			generateOpaqueToken: this.generateOpaqueToken,
-			computeExpiryDate: this.computeExpiryDate,
-			luxon: this.luxon,
-			// Fallbacks match the documented defaults (DOCUMENTATION.md "Variables de entorno") -
-			// keeps login working (and testable without a local .env) even before these are set.
-			sessionTokenDuration: envVariables.SESSION_TOKEN_DEFAULT_TIME || '15m',
-			refreshTokenDuration: envVariables.REFRESH_TOKEN_DEFAULT_TIME || '5d'
-		})
+		const tokenPair = this.issueTokenPair.execute(this._tokenPairConfig())
 
 		// Step 3: persist a new session for this login
 		await this.repository.add('session', { data: { user: String(user._id), ...tokenPair } })
@@ -82,6 +76,43 @@ class AuthenticationService {
 			token: tokenPair.accessToken,
 			refreshToken: tokenPair.refreshToken,
 			user: this.userService.applayContract(user)
+		}
+	}
+
+	async refresh(config = {}) {
+		const { refreshToken } = this.authInterface.getRefreshInterface().parse(config.body)
+
+		// Step 1: find a still-valid session matching the given refresh token
+		const session = await this.findSessionByRefreshToken.execute({ repository: this.repository, luxon: this.luxon, refreshToken })
+
+		// Step 2: issue a fresh access/refresh token pair, rotating the old one
+		const tokenPair = this.issueTokenPair.execute(this._tokenPairConfig())
+
+		// Step 3: persist the rotated tokens on the existing session
+		await this.repository.update('session', { id: session._id, data: tokenPair })
+
+		// Step 4: return the renewed tokens with the session's user
+		const user = await this.userService.findOne({ id: session.user })
+
+		return {
+			token: tokenPair.accessToken,
+			refreshToken: tokenPair.refreshToken,
+			user
+		}
+	}
+
+	/**
+	 * @private
+	 */
+	_tokenPairConfig() {
+		return {
+			generateOpaqueToken: this.generateOpaqueToken,
+			computeExpiryDate: this.computeExpiryDate,
+			luxon: this.luxon,
+			// Fallbacks match the documented defaults (DOCUMENTATION.md "Variables de entorno") -
+			// keeps token issuance working (and testable without a local .env) even before these are set.
+			sessionTokenDuration: envVariables.SESSION_TOKEN_DEFAULT_TIME || '15m',
+			refreshTokenDuration: envVariables.REFRESH_TOKEN_DEFAULT_TIME || '5d'
 		}
 	}
 }

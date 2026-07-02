@@ -2,7 +2,10 @@ const { test, beforeEach } = require('node:test')
 const assert = require('node:assert/strict')
 const MockRepository = require('../../support/mock-repository-preload')
 const DataEncryptHandler = require('../../../src/handlers/dataEncrypt')
+const DataValidatorHandler = require('../../../src/handlers/dataValidator')
 const AuthenticationService = require('../../../src/services/authentication')
+
+const luxon = DataValidatorHandler.getInstance().getLuxon()
 
 beforeEach(() => {
 	MockRepository.reset()
@@ -82,6 +85,66 @@ test('AuthenticationService.login() — throws when the password is wrong', asyn
 
 	await assert.rejects(
 		() => service.login({ body: { email: 'ada@example.com', password: 'WrongPassword!' } }),
+		{ name: 'UnauthorizedError' }
+	)
+})
+
+test('AuthenticationService.refresh() — rotates the tokens and returns the user on a valid refresh token', async () => {
+	const repository = MockRepository.getInstance()
+	const { DateTime } = luxon
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'old-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'old-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const service = AuthenticationService.getInstance()
+
+	const result = await service.refresh({ body: { refreshToken: 'old-refresh-token' } })
+
+	assert.equal(typeof result.token, 'string')
+	assert.equal(typeof result.refreshToken, 'string')
+	assert.notEqual(result.refreshToken, 'old-refresh-token')
+	assert.equal(result.user.name, 'Ada')
+	assert.equal(result.user.email, 'ada@example.com')
+	assert.equal(result.user.password, undefined)
+
+	const sessions = await repository.list('session', { query: {} })
+	assert.equal(sessions.count, 1)
+	assert.equal(sessions.records[0].accessToken, result.token)
+	assert.equal(sessions.records[0].refreshToken, result.refreshToken)
+})
+
+test('AuthenticationService.refresh() — throws when the refresh token does not exist', async () => {
+	const service = AuthenticationService.getInstance()
+
+	await assert.rejects(
+		() => service.refresh({ body: { refreshToken: 'missing-token' } }),
+		{ name: 'UnauthorizedError' }
+	)
+})
+
+test('AuthenticationService.refresh() — throws when the refresh token has expired', async () => {
+	const repository = MockRepository.getInstance()
+	const { DateTime } = luxon
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'old-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').minus({ days: 1 }).toJSDate(),
+			refreshToken: 'expired-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').minus({ days: 1 }).toJSDate()
+		}
+	})
+	const service = AuthenticationService.getInstance()
+
+	await assert.rejects(
+		() => service.refresh({ body: { refreshToken: 'expired-refresh-token' } }),
 		{ name: 'UnauthorizedError' }
 	)
 })
