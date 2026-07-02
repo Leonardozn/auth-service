@@ -1,9 +1,9 @@
 const { MongooseEntityQueries } = require('@auth-service/entity-queries')
 
-const FieldsModel = require('../models/fields')
-const DbTypeModel = require('../models/dbType')
-const DbNameModel = require('../models/dbName')
-const CollectionNameModel = require('../models/collectionName')
+const RoleModel = require('../models/role')
+const UserModel = require('../models/user')
+const SessionModel = require('../models/session')
+const PasswordResetTokenModel = require('../models/password_reset_token')
 
 class Repository {
 	/**
@@ -24,10 +24,10 @@ class Repository {
 
 	constructor() {
 		this.models = {
-			fields: FieldsModel,
-			dbType: DbTypeModel,
-			dbName: DbNameModel,
-			collectionName: CollectionNameModel
+			role: RoleModel,
+			user: UserModel,
+			session: SessionModel,
+			password_reset_token: PasswordResetTokenModel
 		}
 
 		this.mongooseEntityQueries = MongooseEntityQueries.getInstance()
