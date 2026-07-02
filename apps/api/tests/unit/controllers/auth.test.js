@@ -251,3 +251,69 @@ test('AuthController.logout — returns 401 when the Authorization header is mis
 		content: null
 	})
 })
+
+test('AuthController.changePassword — returns 200 with null content on success', async () => {
+	const repository = MockRepository.getInstance()
+	const dataEncryptHandler = DataEncryptHandler.getInstance()
+	const { DateTime } = luxon
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: dataEncryptHandler.encrypt('Sup3rSecret!'), role: '64b0c0ffee1234567890abcd' } })
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'current-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'current-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const controller = AuthController.getInstance()
+	const req = { body: { currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret!' }, headers: { authorization: 'Bearer current-access-token' } }
+	let capturedStatus, capturedBody
+	const res = {
+		status(code) { capturedStatus = code; return this },
+		json(body)   { capturedBody  = body;  return this },
+	}
+
+	await controller.changePassword(req, res)
+
+	assert.equal(capturedStatus, 200)
+	assert.deepEqual(capturedBody, {
+		success: true,
+		message: 'Success!',
+		statusCode: 200,
+		content: null
+	})
+})
+
+test('AuthController.changePassword — returns 401 when the current password is wrong', async () => {
+	const repository = MockRepository.getInstance()
+	const dataEncryptHandler = DataEncryptHandler.getInstance()
+	const { DateTime } = luxon
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: dataEncryptHandler.encrypt('Sup3rSecret!'), role: '64b0c0ffee1234567890abcd' } })
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'current-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'current-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const controller = AuthController.getInstance()
+	const req = { body: { currentPassword: 'WrongPassword!', newPassword: 'NewSecret!' }, headers: { authorization: 'Bearer current-access-token' } }
+	let capturedStatus, capturedBody
+	const res = {
+		status(code) { capturedStatus = code; return this },
+		json(body)   { capturedBody  = body;  return this },
+	}
+
+	await controller.changePassword(req, res)
+
+	assert.equal(capturedStatus, 401)
+	assert.deepEqual(capturedBody, {
+		success: false,
+		message: 'Current password does not match.',
+		statusCode: 401,
+		content: null
+	})
+})

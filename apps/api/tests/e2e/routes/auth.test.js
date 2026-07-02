@@ -287,3 +287,87 @@ test('auth routes — POST /auth/logout rejects a missing Authorization header',
 		await app.stop()
 	}
 })
+
+test('auth routes — POST /auth/change-password updates the password and revokes other sessions', async () => {
+	const app = await runApp(seededRoleEnv())
+
+	try {
+		await app.request('POST', `${app.path}/auth/register`, {
+			name: 'Ada',
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+		const firstLogin = await app.request('POST', `${app.path}/auth/login`, {
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+		const secondLogin = await app.request('POST', `${app.path}/auth/login`, {
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+
+		const changeRes = await app.request(
+			'POST',
+			`${app.path}/auth/change-password`,
+			{ currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret!' },
+			{ Authorization: `Bearer ${firstLogin.body.content.token}` }
+		)
+
+		assert.equal(changeRes.status, 200)
+		assert.deepEqual(changeRes.body, {
+			success: true,
+			message: 'Success!',
+			statusCode: 200,
+			content: null
+		})
+
+		// the other session (from the second login) must be revoked
+		const otherValidate = await app.request('POST', `${app.path}/auth/validate`, { token: secondLogin.body.content.token })
+		assert.equal(otherValidate.status, 401)
+
+		// the current session survives the change
+		const currentValidate = await app.request('POST', `${app.path}/auth/validate`, { token: firstLogin.body.content.token })
+		assert.equal(currentValidate.status, 200)
+
+		// old password no longer works, new one does
+		const oldLogin = await app.request('POST', `${app.path}/auth/login`, { email: 'ada@example.com', password: 'Sup3rSecret!' })
+		assert.equal(oldLogin.status, 401)
+		const newLogin = await app.request('POST', `${app.path}/auth/login`, { email: 'ada@example.com', password: 'NewSecret!' })
+		assert.equal(newLogin.status, 200)
+	} finally {
+		await app.stop()
+	}
+})
+
+test('auth routes — POST /auth/change-password rejects the wrong current password', async () => {
+	const app = await runApp(seededRoleEnv())
+
+	try {
+		await app.request('POST', `${app.path}/auth/register`, {
+			name: 'Ada',
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+		const loginRes = await app.request('POST', `${app.path}/auth/login`, {
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+
+		const res = await app.request(
+			'POST',
+			`${app.path}/auth/change-password`,
+			{ currentPassword: 'WrongPassword!', newPassword: 'NewSecret!' },
+			{ Authorization: `Bearer ${loginRes.body.content.token}` }
+		)
+
+		assert.equal(res.status, 401)
+		assert.deepEqual(res.body, {
+			success: false,
+			message: 'Current password does not match.',
+			statusCode: 401,
+			content: null
+		})
+	} finally {
+		await app.stop()
+	}
+})
