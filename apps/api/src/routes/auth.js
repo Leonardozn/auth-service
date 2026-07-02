@@ -29,7 +29,8 @@ class AuthRouter {
 				{ requestMethod: 'post', path: '/login', controllerMethod: this.authController.login },
 				{ requestMethod: 'post', path: '/refresh', controllerMethod: this.authController.refresh },
 				{ requestMethod: 'post', path: '/validate', controllerMethod: this.authController.validate },
-				{ requestMethod: 'post', path: '/logout', controllerMethod: this.authController.logout }
+				{ requestMethod: 'post', path: '/logout', controllerMethod: this.authController.logout },
+				{ requestMethod: 'post', path: '/change-password', controllerMethod: this.authController.changePassword }
 			]
 		}
 	}
