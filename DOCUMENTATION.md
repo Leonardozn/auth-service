@@ -46,7 +46,8 @@ recursos. auth-service es la fuente de verdad de *quién es* el usuario y *qué 
 12. Implementar el contrato: enviar el email de recuperación vía Resend (auth-service → Resend)
     — usa `@backend/email-resend`.
 13. Implementar el contrato: restablecer contraseña (`POST /auth/reset-password`).
-14. Implementar el contrato: gestión de cuenta (`PATCH /user/:id`, `DELETE /user/:id`).
+14. Implementar el contrato: gestión de cuenta — editar perfil (`PATCH /user/:id`) y desactivar
+    la propia cuenta (`POST /auth/deactivate`).
 15. Implementar la lógica de negocio — Authentication → Registrar un Usuario.
 16. Implementar la lógica de negocio — Authentication → Iniciar Sesión de un Usuario.
 17. Implementar la lógica de negocio — Authentication → Refrescar la Sesión.
@@ -55,7 +56,7 @@ recursos. auth-service es la fuente de verdad de *quién es* el usuario y *qué 
 20. Implementar la lógica de negocio — AccountManagement → Cambiar Contraseña.
 21. Implementar la lógica de negocio — AccountManagement → Solicitar Recuperación de Contraseña.
 22. Implementar la lógica de negocio — AccountManagement → Restablecer Contraseña.
-23. Implementar la lógica de negocio — AccountManagement → Editar Perfil / Eliminar Cuenta.
+23. Implementar la lógica de negocio — AccountManagement → Editar Perfil / Desactivar Cuenta.
 
 ## 5. Artifacts
 
@@ -181,9 +182,11 @@ commitea — su valor se toma del entorno al crear el evar). Los tiempos usan fo
 - Respuesta 200 `content: null`; 400 si el token no existe, ya se usó o expiró. Revoca sesiones.
 
 ### Contrato: el frontend gestiona su cuenta vía auth-service
-- CRUD estándar sobre `User`: `PATCH /user/:id` (name/email), `DELETE /user/:id`. Requiere
-  `Authorization: Bearer <token>`; solo la propia cuenta (o un admin sobre cualquiera): un
-  no-dueño sin rol admin recibe 403.
+- Editar perfil: `PATCH /user/:id` (name/email). Desactivar la propia cuenta:
+  `POST /auth/deactivate` (acción personalizada) — marca `User.active = false` y revoca sus
+  sesiones. Requiere `Authorization: Bearer <token>`; solo la propia cuenta (o un admin sobre
+  cualquiera): un no-dueño sin rol admin recibe 403. Un admin reactiva con `PATCH /user/:id`
+  `{ active: true }`.
 - Respuesta: `{ ..., content: <User> | null }`.
 
 ### Contrato: auth-service envía el email de recuperación vía Resend
@@ -220,6 +223,7 @@ Datos configurables (nuevos roles sin cambiar código).
 | email     | string           | sí        | Email de inicio de sesión, único|
 | password  | string           | sí        | Contraseña hasheada (data-encrypt)|
 | role      | reference → Role | sí        | Rol asignado al usuario         |
+| active    | boolean          | sí        | Si la cuenta está activa (inactiva no puede iniciar sesión)|
 | createdAt | datetime         | sí        | Fecha de registro               |
 
 ##### Session
@@ -271,7 +275,8 @@ Resultado: Un User capaz de iniciar sesión, o error si el email ya estaba tomad
 1. Recibe email y password.
 2. Busca el User por email.
 3. Si no coincide el User o el hash de la contraseña → error 401, sin token.
-4. Crea una Session con un access token (expira en `SESSION_TOKEN_DEFAULT_TIME`) y un refresh
+4. Si el User está desactivado (`active = false`) → error 403 ("cuenta desactivada"), sin token.
+5. Crea una Session con un access token (expira en `SESSION_TOKEN_DEFAULT_TIME`) y un refresh
    token (expira en `REFRESH_TOKEN_DEFAULT_TIME`), y devuelve ambos.
 
 Resultado: Un access token (para `Authorization: Bearer`) y un refresh token, o error ante
@@ -330,12 +335,14 @@ Resultado: Si el email existe, el usuario recibe un enlace; la respuesta es la m
 
 Resultado: Contraseña restablecida y sesiones cerradas, o error si el token no es válido.
 
-#### Proceso: Editar Perfil / Eliminar Cuenta
+#### Proceso: Editar Perfil / Desactivar Cuenta
 1. Valida la sesión e identifica al User autenticado.
-2. Confirma que el `:id` objetivo es el propio usuario (o que es admin); si no, 403.
-3. Editar perfil: actualiza name/email (rechazando un email ya tomado por otro User). Eliminar:
-   borra el User y en cascada sus Session y PasswordResetToken.
+2. Editar perfil (`PATCH /user/:id`): confirma que el `:id` es el propio usuario (o admin); si no,
+   403. Actualiza name/email (rechazando un email ya tomado por otro User).
+3. Desactivar (`POST /auth/deactivate`): marca `User.active = false` y revoca (elimina) las
+   Session y PasswordResetToken del usuario. Un admin reactiva con `PATCH /user/:id`
+   `{ active: true }`.
 
-Resultado: Perfil actualizado o cuenta eliminada, o error de autorización/validación.
-Nota de modularidad: cv-service no se entera de la baja; sus Curriculum quedan huérfanos por id
-(sin limpieza en cascada entre servicios, por diseño).
+Resultado: Perfil actualizado o cuenta desactivada, o error de autorización/validación.
+Nota de modularidad: al ser desactivación (soft delete), el User sigue existiendo por id, así que
+los Curriculum de cv-service NO quedan huérfanos; no hace falta cascada entre servicios.
