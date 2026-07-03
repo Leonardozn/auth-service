@@ -4,6 +4,7 @@ const AuthInterfaces = require('../interfaces/auth')
 const DataEncryptHandler = require('../handlers/dataEncrypt')
 const DataValidatorHandler = require('../handlers/dataValidator')
 const envVariables = require('../handlers/envVariables')
+const { ForbiddenError } = require('../handlers/handleErrors')
 const ResolveDefaultRole = require('./commands/resolveDefaultRole')
 const CheckEmailAvailable = require('./commands/checkEmailAvailable')
 const HashPassword = require('./commands/hashPassword')
@@ -58,8 +59,8 @@ class AuthenticationService {
 		// Step 3: hash the plain-text password before persisting it
 		const hashedPassword = await this.hashPassword.execute({ dataEncryptHandler: this.dataEncryptHandler, password })
 
-		// Step 4: create the user, reusing the User model's own service method
-		const user = await this.userService.add({ body: { name, email, password: hashedPassword, role: String(role._id) } })
+		// Step 4: create the user (active by default), reusing the User model's own service method
+		const user = await this.userService.add({ body: { name, email, password: hashedPassword, role: String(role._id), active: true } })
 
 		return { user }
 	}
@@ -70,10 +71,13 @@ class AuthenticationService {
 		// Step 1: find the user and verify their password
 		const user = await this.verifyCredentials.execute({ repository: this.repository, dataEncryptHandler: this.dataEncryptHandler, email, password })
 
-		// Step 2: issue a fresh access/refresh token pair
+		// Step 2: a deactivated account may not start a new session
+		if (user.active === false) throw new ForbiddenError('Account is deactivated.')
+
+		// Step 3: issue a fresh access/refresh token pair
 		const tokenPair = this.issueTokenPair.execute(this._tokenPairConfig())
 
-		// Step 3: persist a new session for this login
+		// Step 4: persist a new session for this login
 		await this.repository.add('session', { data: { user: String(user._id), ...tokenPair } })
 
 		return {

@@ -9,14 +9,15 @@ const SAMPLE = {
 		"name": "sample text",
 		"email": "sample text",
 		"password": "sample text",
-		"role": "64b0c0ffee1234567890abcd"
+		"role": "64b0c0ffee1234567890abcd",
+		"active": true
 	}
 
 // The User contract never exposes password (security: even hashed, it must never leave the
-// API) - this is what every service response is expected to look like.
-const EXPECTED = { name: SAMPLE.name, email: SAMPLE.email, role: SAMPLE.role }
-
+// API) - this is what every service response is expected to look like. _id IS exposed (unlike
+// other models) since self-service account management needs the client to know its own id.
 const SEED_ID = '64b0c0ffee1234567890abce'
+const EXPECTED = { _id: SEED_ID, name: SAMPLE.name, email: SAMPLE.email, role: SAMPLE.role, active: SAMPLE.active }
 
 function seed() {
 	const repo = MockRepository.getInstance()
@@ -34,7 +35,8 @@ test('user service add() — creates and returns the contract-filtered record', 
 
 	const result = await service.add({ body: SAMPLE })
 
-	assert.deepEqual(result, EXPECTED)
+	assert.equal(typeof result._id, 'string')
+	assert.deepEqual(result, { ...EXPECTED, _id: result._id })
 })
 
 test('user service findOne() — returns the contract-filtered record by id', async () => {

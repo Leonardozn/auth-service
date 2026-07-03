@@ -32,7 +32,8 @@ class AuthRouter {
 				{ requestMethod: 'post', path: '/logout', controllerMethod: this.authController.logout },
 				{ requestMethod: 'post', path: '/change-password', controllerMethod: this.authController.changePassword },
 				{ requestMethod: 'post', path: '/forgot-password', controllerMethod: this.authController.forgotPassword },
-				{ requestMethod: 'post', path: '/reset-password', controllerMethod: this.authController.resetPassword }
+				{ requestMethod: 'post', path: '/reset-password', controllerMethod: this.authController.resetPassword },
+				{ requestMethod: 'post', path: '/deactivate', controllerMethod: this.authController.deactivate }
 			]
 		}
 	}

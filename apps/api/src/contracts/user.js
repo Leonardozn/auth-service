@@ -12,9 +12,11 @@ class UserContract {
 
 	getContract() {
 		return {
+			_id: true,
 			name: true,
 			email: true,
 			role: true,
+			active: true,
 		}
 	}
 }

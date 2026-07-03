@@ -486,3 +486,57 @@ test('auth routes — POST /auth/reset-password rejects an invalid token', async
 		await app.stop()
 	}
 })
+
+test('auth routes — POST /auth/deactivate deactivates the account and a subsequent login is rejected', async () => {
+	const app = await runApp(seededRoleEnv())
+
+	try {
+		await app.request('POST', `${app.path}/auth/register`, {
+			name: 'Ada',
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+		const loginRes = await app.request('POST', `${app.path}/auth/login`, {
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+		const { token } = loginRes.body.content
+
+		const deactivateRes = await app.request('POST', `${app.path}/auth/deactivate`, undefined, { Authorization: `Bearer ${token}` })
+
+		assert.equal(deactivateRes.status, 200)
+		assert.equal(deactivateRes.body.success, true)
+		assert.equal(deactivateRes.body.content.active, false)
+
+		// the session used to deactivate is itself revoked
+		const validateRes = await app.request('POST', `${app.path}/auth/validate`, { token })
+		assert.equal(validateRes.status, 401)
+
+		// a deactivated account can no longer log in
+		const secondLogin = await app.request('POST', `${app.path}/auth/login`, {
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+		assert.equal(secondLogin.status, 403)
+	} finally {
+		await app.stop()
+	}
+})
+
+test('auth routes — POST /auth/deactivate rejects a missing Authorization header', async () => {
+	const app = await runApp()
+
+	try {
+		const res = await app.request('POST', `${app.path}/auth/deactivate`)
+
+		assert.equal(res.status, 401)
+		assert.deepEqual(res.body, {
+			success: false,
+			message: 'Missing or malformed Authorization header.',
+			statusCode: 401,
+			content: null
+		})
+	} finally {
+		await app.stop()
+	}
+})

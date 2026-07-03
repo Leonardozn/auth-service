@@ -1,4 +1,5 @@
 const UserService = require('../services/user')
+const AccountManagementService = require('../services/accountManagement')
 const HandleResponseHandler = require('../handlers/handleResponse')
 
 class UserController {
@@ -23,6 +24,7 @@ class UserController {
 		this.responseBody = this.handleResponseHandler.getResponseBody()
 
 		this.userService = UserService.getInstance()
+		this.accountManagementService = AccountManagementService.getInstance()
 
 		this.add = this.add.bind(this)
 		this.findOne = this.findOne.bind(this)
@@ -81,7 +83,7 @@ class UserController {
 	
 	async update(req, res) {
 		try {
-			const user = await this.userService.update({ body: req.body, id: req.params.id, files: req.files })
+			const user = await this.accountManagementService.editProfile({ body: req.body, id: req.params.id, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(user)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)

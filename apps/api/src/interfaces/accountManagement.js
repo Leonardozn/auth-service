@@ -30,6 +30,11 @@ class AccountManagementInterfaces {
 	/**
 	 * @private
 	 */
+	editProfileInterface
+
+	/**
+	 * @private
+	 */
 	types
 
 	constructor() {
@@ -49,6 +54,12 @@ class AccountManagementInterfaces {
 			token: { type: this.types.string },
 			newPassword: { type: this.types.string }
 		})
+
+		this.editProfileInterface = this.dataValidatorHandler.validate({
+			name: { type: this.types.string, optional: true },
+			email: { type: this.types.string, optional: true },
+			active: { type: this.types.boolean, optional: true }
+		})
 	}
 
 	static getInstance() {
@@ -66,6 +77,10 @@ class AccountManagementInterfaces {
 
 	getResetPasswordInterface() {
 		return this.resetPasswordInterface
+	}
+
+	getEditProfileInterface() {
+		return this.editProfileInterface
 	}
 }
 

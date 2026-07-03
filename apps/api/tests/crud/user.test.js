@@ -2,27 +2,30 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { runApp } = require('../support/run-app')
 
-// Exhaustive list/filter/sort/pagination coverage for 'user' (DB mocked, L4-style) -
-// records are created through the real POST endpoint (contracts hide '_id', so identifying
-// records by a known field value - not a learned id - is what makes these assertions possible).
+// Exhaustive list/filter/sort/pagination coverage for 'user' (DB mocked, L4-style). Unlike other
+// models, the User contract exposes _id (self-service account management needs the client to
+// know its own id - see tests/e2e/routes/user.test.js's PATCH coverage).
 const RECORDS = [
 		{
 			"name": "item-1",
 			"email": "sample text",
 			"password": "sample text",
-			"role": "64b0c0ffee1234567890abcd"
+			"role": "64b0c0ffee1234567890abcd",
+			"active": true
 		},
 		{
 			"name": "item-2",
 			"email": "sample text",
 			"password": "sample text",
-			"role": "64b0c0ffee1234567890abcd"
+			"role": "64b0c0ffee1234567890abcd",
+			"active": true
 		},
 		{
 			"name": "item-3",
 			"email": "sample text",
 			"password": "sample text",
-			"role": "64b0c0ffee1234567890abcd"
+			"role": "64b0c0ffee1234567890abcd",
+			"active": true
 		}
 	]
 
@@ -33,12 +36,13 @@ test('user create — complete payload round-trips through the full envelope', a
 		const res = await app.request('POST', `${app.path}/user`, RECORDS[0])
 
 		assert.equal(res.status, 200)
+		assert.equal(typeof res.body.content._id, 'string')
 		assert.deepEqual(res.body, {
 			success: true,
 			message: 'Success!',
 			statusCode: 200,
 			// The User contract never exposes password (security), even though it was submitted.
-			content: { name: RECORDS[0].name, email: RECORDS[0].email, role: RECORDS[0].role }
+			content: { _id: res.body.content._id, name: RECORDS[0].name, email: RECORDS[0].email, role: RECORDS[0].role, active: RECORDS[0].active }
 		})
 	} finally {
 		await app.stop()

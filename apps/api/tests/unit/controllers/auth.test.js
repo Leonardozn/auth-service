@@ -396,3 +396,54 @@ test('AuthController.resetPassword — returns 400 when the token is invalid', a
 		content: null
 	})
 })
+
+test('AuthController.deactivate — returns 200 with the deactivated user on success', async () => {
+	const repository = MockRepository.getInstance()
+	const { DateTime } = luxon
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'current-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'current-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const controller = AuthController.getInstance()
+	const req = { headers: { authorization: 'Bearer current-access-token' } }
+	let capturedStatus, capturedBody
+	const res = {
+		status(code) { capturedStatus = code; return this },
+		json(body)   { capturedBody  = body;  return this },
+	}
+
+	await controller.deactivate(req, res)
+
+	assert.equal(capturedStatus, 200)
+	assert.equal(capturedBody.success, true)
+	assert.equal(capturedBody.content.active, false)
+
+	const sessions = await repository.list('session', { query: { user: String(user._id) } })
+	assert.equal(sessions.count, 0)
+})
+
+test('AuthController.deactivate — returns 401 when the Authorization header is missing', async () => {
+	const controller = AuthController.getInstance()
+	const req = { headers: {} }
+	let capturedStatus, capturedBody
+	const res = {
+		status(code) { capturedStatus = code; return this },
+		json(body)   { capturedBody  = body;  return this },
+	}
+
+	await controller.deactivate(req, res)
+
+	assert.equal(capturedStatus, 401)
+	assert.deepEqual(capturedBody, {
+		success: false,
+		message: 'Missing or malformed Authorization header.',
+		statusCode: 401,
+		content: null
+	})
+})

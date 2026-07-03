@@ -89,6 +89,19 @@ test('AuthenticationService.login() — throws when the password is wrong', asyn
 	)
 })
 
+test('AuthenticationService.login() — throws 403 when the account is deactivated', async () => {
+	const repository = MockRepository.getInstance()
+	const dataEncryptHandler = DataEncryptHandler.getInstance()
+	const hashed = dataEncryptHandler.encrypt('Sup3rSecret!')
+	await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: hashed, role: '64b0c0ffee1234567890abcd', active: false } })
+	const service = AuthenticationService.getInstance()
+
+	await assert.rejects(
+		() => service.login({ body: { email: 'ada@example.com', password: 'Sup3rSecret!' } }),
+		{ name: 'ForbiddenError' }
+	)
+})
+
 test('AuthenticationService.refresh() — rotates the tokens and returns the user on a valid refresh token', async () => {
 	const repository = MockRepository.getInstance()
 	const { DateTime } = luxon

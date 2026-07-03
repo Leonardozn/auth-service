@@ -205,3 +205,146 @@ test('AccountManagementService.resetPassword() — throws when the token was alr
 		{ name: 'BadRequestError' }
 	)
 })
+
+test('AccountManagementService.editProfile() — updates name/email for the account owner', async () => {
+	const repository = MockRepository.getInstance()
+	const { user } = await seedUserWithSession(repository)
+	const service = AccountManagementService.getInstance()
+
+	const result = await service.editProfile({
+		id: String(user._id),
+		body: { name: 'Ada Updated', email: 'ada-updated@example.com' },
+		authorizationHeader: 'Bearer current-access-token'
+	})
+
+	assert.equal(result.name, 'Ada Updated')
+	assert.equal(result.email, 'ada-updated@example.com')
+})
+
+test('AccountManagementService.editProfile() — allows an admin to edit another account', async () => {
+	const repository = MockRepository.getInstance()
+	const dataEncryptHandler = DataEncryptHandler.getInstance()
+	const { DateTime } = luxon
+	await repository.add('role', { data: { name: 'admin', active: true } })
+	const adminRole = await repository.list('role', { query: { name: 'admin' } })
+	const admin = await repository.add('user', { data: { name: 'Root', email: 'root@example.com', password: dataEncryptHandler.encrypt('AdminSecret!'), role: String(adminRole.records[0]._id) } })
+	await repository.add('session', {
+		data: {
+			user: String(admin._id),
+			accessToken: 'admin-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'admin-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const { user } = await seedUserWithSession(repository)
+	const service = AccountManagementService.getInstance()
+
+	const result = await service.editProfile({
+		id: String(user._id),
+		body: { name: 'Edited By Admin' },
+		authorizationHeader: 'Bearer admin-access-token'
+	})
+
+	assert.equal(result.name, 'Edited By Admin')
+})
+
+test('AccountManagementService.editProfile() — throws 403 when editing another account without admin', async () => {
+	const repository = MockRepository.getInstance()
+	const { user } = await seedUserWithSession(repository)
+	const other = await repository.add('user', { data: { name: 'Bob', email: 'bob@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	assert.notEqual(String(user._id), String(other._id))
+	const service = AccountManagementService.getInstance()
+
+	await assert.rejects(
+		() => service.editProfile({
+			id: String(other._id),
+			body: { name: 'Hijacked' },
+			authorizationHeader: 'Bearer current-access-token'
+		}),
+		{ name: 'ForbiddenError' }
+	)
+})
+
+test('AccountManagementService.editProfile() — throws when the new email is already taken', async () => {
+	const repository = MockRepository.getInstance()
+	const { user } = await seedUserWithSession(repository)
+	await repository.add('user', { data: { name: 'Bob', email: 'bob@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	const service = AccountManagementService.getInstance()
+
+	await assert.rejects(
+		() => service.editProfile({
+			id: String(user._id),
+			body: { email: 'bob@example.com' },
+			authorizationHeader: 'Bearer current-access-token'
+		}),
+		{ name: 'BadRequestError' }
+	)
+})
+
+test('AccountManagementService.editProfile() — ignores an "active" change from a non-admin editing themselves', async () => {
+	const repository = MockRepository.getInstance()
+	const { user } = await seedUserWithSession(repository)
+	const service = AccountManagementService.getInstance()
+
+	const result = await service.editProfile({
+		id: String(user._id),
+		body: { active: false },
+		authorizationHeader: 'Bearer current-access-token'
+	})
+
+	assert.equal(result.active, undefined)
+})
+
+test('AccountManagementService.editProfile() — allows an admin to reactivate another account', async () => {
+	const repository = MockRepository.getInstance()
+	const dataEncryptHandler = DataEncryptHandler.getInstance()
+	const { DateTime } = luxon
+	await repository.add('role', { data: { name: 'admin', active: true } })
+	const adminRole = await repository.list('role', { query: { name: 'admin' } })
+	const admin = await repository.add('user', { data: { name: 'Root', email: 'root@example.com', password: dataEncryptHandler.encrypt('AdminSecret!'), role: String(adminRole.records[0]._id) } })
+	await repository.add('session', {
+		data: {
+			user: String(admin._id),
+			accessToken: 'admin-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'admin-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const other = await repository.add('user', { data: { name: 'Bob', email: 'bob@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd', active: false } })
+	const service = AccountManagementService.getInstance()
+
+	const result = await service.editProfile({
+		id: String(other._id),
+		body: { active: true },
+		authorizationHeader: 'Bearer admin-access-token'
+	})
+
+	assert.equal(result.active, true)
+})
+
+test('AccountManagementService.deactivateAccount() — deactivates the caller\'s own account and revokes its sessions/reset tokens', async () => {
+	const repository = MockRepository.getInstance()
+	const { user } = await seedUserWithSession(repository)
+	await repository.add('password_reset_token', { data: { user: String(user._id), token: 'leftover-token', expiresAt: new Date(), used: false } })
+	const service = AccountManagementService.getInstance()
+
+	const result = await service.deactivateAccount({ authorizationHeader: 'Bearer current-access-token' })
+
+	assert.equal(result.active, false)
+
+	const remainingSessions = await repository.list('session', { query: { user: String(user._id) } })
+	assert.equal(remainingSessions.count, 0)
+	const remainingTokens = await repository.list('password_reset_token', { query: { user: String(user._id) } })
+	assert.equal(remainingTokens.count, 0)
+})
+
+test('AccountManagementService.deactivateAccount() — throws when the Authorization header is missing', async () => {
+	const service = AccountManagementService.getInstance()
+
+	await assert.rejects(
+		() => service.deactivateAccount({ authorizationHeader: undefined }),
+		{ name: 'UnauthorizedError' }
+	)
+})
