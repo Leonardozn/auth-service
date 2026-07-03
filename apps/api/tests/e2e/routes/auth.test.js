@@ -1,5 +1,8 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
 const { runApp } = require('../../support/run-app')
 
 // The "user" default role must already exist for register() to resolve it - seeded here
@@ -365,6 +368,54 @@ test('auth routes — POST /auth/change-password rejects the wrong current passw
 			success: false,
 			message: 'Current password does not match.',
 			statusCode: 401,
+			content: null
+		})
+	} finally {
+		await app.stop()
+	}
+})
+
+test('auth routes — POST /auth/forgot-password creates a reset token and emails it when the user exists', async () => {
+	const captureFile = path.join(os.tmpdir(), `forgot-password-capture-${Date.now()}.json`)
+	const app = await runApp({ ...seededRoleEnv(), MOCK_EMAIL_CAPTURE_FILE: captureFile })
+
+	try {
+		await app.request('POST', `${app.path}/auth/register`, {
+			name: 'Ada',
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+
+		const res = await app.request('POST', `${app.path}/auth/forgot-password`, { email: 'ada@example.com' })
+
+		assert.equal(res.status, 200)
+		assert.deepEqual(res.body, {
+			success: true,
+			message: 'Success!',
+			statusCode: 200,
+			content: null
+		})
+
+		const sent = JSON.parse(fs.readFileSync(captureFile, 'utf8'))
+		assert.equal(sent.to, 'ada@example.com')
+		assert.match(sent.html, /reset-password\?token=/)
+	} finally {
+		await app.stop()
+		fs.rmSync(captureFile, { force: true })
+	}
+})
+
+test('auth routes — POST /auth/forgot-password responds successfully even when the email is unknown', async () => {
+	const app = await runApp(seededRoleEnv())
+
+	try {
+		const res = await app.request('POST', `${app.path}/auth/forgot-password`, { email: 'missing@example.com' })
+
+		assert.equal(res.status, 200)
+		assert.deepEqual(res.body, {
+			success: true,
+			message: 'Success!',
+			statusCode: 200,
 			content: null
 		})
 	} finally {

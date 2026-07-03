@@ -1,6 +1,7 @@
 const { test, beforeEach } = require('node:test')
 const assert = require('node:assert/strict')
 const MockRepository = require('../../support/mock-repository-preload')
+const MockEmailResend = require('../../support/mock-email-resend-preload')
 const DataEncryptHandler = require('../../../src/handlers/dataEncrypt')
 const DataValidatorHandler = require('../../../src/handlers/dataValidator')
 const AccountManagementService = require('../../../src/services/accountManagement')
@@ -87,4 +88,53 @@ test('AccountManagementService.changePassword() — throws when the access token
 		() => service.changePassword({ body: { currentPassword: 'a', newPassword: 'b' }, authorizationHeader: 'Bearer missing-token' }),
 		{ name: 'UnauthorizedError' }
 	)
+})
+
+test('AccountManagementService.forgotPassword() — creates a reset token and emails it when the user exists', async () => {
+	const repository = MockRepository.getInstance()
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	const mockEmail = MockEmailResend.getInstance()
+	let capturedSend
+	mockEmail.send = async (config) => { capturedSend = config; return { id: 'mock-email-id' } }
+	const service = AccountManagementService.getInstance()
+
+	const result = await service.forgotPassword({ body: { email: 'ada@example.com' } })
+
+	assert.equal(result, null)
+	assert.equal(capturedSend.to, 'ada@example.com')
+	assert.match(capturedSend.html, /reset-password\?token=/)
+
+	const tokens = await repository.list('password_reset_token', { query: {} })
+	assert.equal(tokens.count, 1)
+	assert.equal(tokens.records[0].user, String(user._id))
+	assert.equal(tokens.records[0].used, false)
+})
+
+test('AccountManagementService.forgotPassword() — responds successfully without creating a token when the email is unknown', async () => {
+	const repository = MockRepository.getInstance()
+	const mockEmail = MockEmailResend.getInstance()
+	let sendCalled = false
+	mockEmail.send = async () => { sendCalled = true; return { id: 'mock-email-id' } }
+	const service = AccountManagementService.getInstance()
+
+	const result = await service.forgotPassword({ body: { email: 'missing@example.com' } })
+
+	assert.equal(result, null)
+	assert.equal(sendCalled, false)
+	const tokens = await repository.list('password_reset_token', { query: {} })
+	assert.equal(tokens.count, 0)
+})
+
+test('AccountManagementService.forgotPassword() — still responds successfully when the email fails to send', async () => {
+	const repository = MockRepository.getInstance()
+	await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	const mockEmail = MockEmailResend.getInstance()
+	mockEmail.send = async () => { throw new Error('Resend is down') }
+	const service = AccountManagementService.getInstance()
+
+	const result = await service.forgotPassword({ body: { email: 'ada@example.com' } })
+
+	assert.equal(result, null)
+	const tokens = await repository.list('password_reset_token', { query: {} })
+	assert.equal(tokens.count, 1)
 })

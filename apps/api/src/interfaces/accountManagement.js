@@ -20,6 +20,11 @@ class AccountManagementInterfaces {
 	/**
 	 * @private
 	 */
+	forgotPasswordInterface
+
+	/**
+	 * @private
+	 */
 	types
 
 	constructor() {
@@ -30,6 +35,10 @@ class AccountManagementInterfaces {
 			currentPassword: { type: this.types.string },
 			newPassword: { type: this.types.string }
 		})
+
+		this.forgotPasswordInterface = this.dataValidatorHandler.validate({
+			email: { type: this.types.string }
+		})
 	}
 
 	static getInstance() {
@@ -39,6 +48,10 @@ class AccountManagementInterfaces {
 
 	getChangePasswordInterface() {
 		return this.changePasswordInterface
+	}
+
+	getForgotPasswordInterface() {
+		return this.forgotPasswordInterface
 	}
 }
 

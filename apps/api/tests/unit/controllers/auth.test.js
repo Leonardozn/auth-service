@@ -1,6 +1,7 @@
 const { test, beforeEach } = require('node:test')
 const assert = require('node:assert/strict')
 const MockRepository = require('../../support/mock-repository-preload')
+const MockEmailResend = require('../../support/mock-email-resend-preload')
 const DataEncryptHandler = require('../../../src/handlers/dataEncrypt')
 const DataValidatorHandler = require('../../../src/handlers/dataValidator')
 const AuthController = require('../../../src/controllers/auth')
@@ -316,4 +317,31 @@ test('AuthController.changePassword — returns 401 when the current password is
 		statusCode: 401,
 		content: null
 	})
+})
+
+test('AuthController.forgotPassword — returns 200 with null content whether or not the email exists', async () => {
+	const repository = MockRepository.getInstance()
+	await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	const mockEmail = MockEmailResend.getInstance()
+	mockEmail.send = async () => ({ id: 'mock-email-id' })
+	const controller = AuthController.getInstance()
+
+	for (const email of ['ada@example.com', 'missing@example.com']) {
+		const req = { body: { email } }
+		let capturedStatus, capturedBody
+		const res = {
+			status(code) { capturedStatus = code; return this },
+			json(body)   { capturedBody  = body;  return this },
+		}
+
+		await controller.forgotPassword(req, res)
+
+		assert.equal(capturedStatus, 200)
+		assert.deepEqual(capturedBody, {
+			success: true,
+			message: 'Success!',
+			statusCode: 200,
+			content: null
+		})
+	}
 })
