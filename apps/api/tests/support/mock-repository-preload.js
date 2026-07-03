@@ -174,10 +174,33 @@ class MockRepository {
 	}
 }
 
+// Fake for @auth-service/db-connections - DbConnectionHandler.getConnection() hands this back
+// as-is, so deleteAccount()'s real Mongo transaction (startSession/withTransaction) runs its
+// code path without ever opening a real connection. Never intercepted alongside real models
+// (those are only reached through the real repositories/index.js, which is itself replaced
+// below before its own imports ever run).
+class MockDbSession {
+	async withTransaction(callback) { return callback() }
+	endSession() { /* no-op */ }
+}
+
+// Stands in for mongoose.Types.ObjectId - stringifies back to the id it was built from, which is
+// all the mock repository's own equality checks (String(value) === String(condition)) need.
+class MockObjectId {
+	constructor(id) { this.id = String(id) }
+	toString() { return this.id }
+}
+
+const MockAuthDbMongodb = {
+	startSession: async () => new MockDbSession(),
+	Types: { ObjectId: MockObjectId }
+}
+
 // Intercept the generated services' require('../repositories') and hand back the mock.
 const originalLoad = Module._load
 Module._load = function (request, parent, isMain) {
 	if (request === '../repositories') return MockRepository
+	if (request === '@auth-service/db-connections') return { authDb: MockAuthDbMongodb, AuthDbMongodb: MockAuthDbMongodb }
 	return originalLoad.apply(this, arguments)
 }
 
