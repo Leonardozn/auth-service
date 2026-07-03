@@ -39,7 +39,7 @@ class RoleController {
 
 	async add(req, res) {
 		try {
-			const role = await this.roleService.add({ body: req.body, files: req.files })
+			const role = await this.roleService.add({ body: req.body, files: req.files, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(role)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -81,7 +81,7 @@ class RoleController {
 	
 	async update(req, res) {
 		try {
-			const role = await this.roleService.update({ body: req.body, id: req.params.id, files: req.files })
+			const role = await this.roleService.update({ body: req.body, id: req.params.id, files: req.files, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(role)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -95,7 +95,7 @@ class RoleController {
 
 	async replace(req, res) {
 		try {
-			const role = await this.roleService.replace({ body: req.body, id: req.params.id, files: req.files })
+			const role = await this.roleService.replace({ body: req.body, id: req.params.id, files: req.files, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(role)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -109,7 +109,7 @@ class RoleController {
 	
 	async remove(req, res) {
 		try {
-			const role = await this.roleService.remove({ id: req.params.id })
+			const role = await this.roleService.remove({ id: req.params.id, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(role)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
