@@ -19,7 +19,7 @@ const APP_ROOT = path.join(__dirname, '..', '..')
 // process.cwd()) - the real "start" script runs it the same way, so the subprocess must too.
 const PROJECT_ROOT = path.join(APP_ROOT, '..', '..')
 const PRELOAD = path.join(__dirname, 'mock-repository-preload.js')
-const EMAIL_PRELOAD = path.join(__dirname, 'mock-email-resend-preload.js')
+const EMAIL_PRELOAD = path.join(__dirname, 'mock-email-manager-preload.js')
 
 function getFreePort() {
 	return new Promise((resolve, reject) => {

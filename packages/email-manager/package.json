@@ -1,5 +1,5 @@
 {
-	"name": "@auth-service/email-resend",
+	"name": "@auth-service/email-manager",
 	"version": "1.0.0",
 	"description": "Sends transactional emails through the Resend API.",
 	"main": "index",

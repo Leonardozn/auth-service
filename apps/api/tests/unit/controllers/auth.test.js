@@ -1,7 +1,7 @@
 const { test, beforeEach } = require('node:test')
 const assert = require('node:assert/strict')
 const MockRepository = require('../../support/mock-repository-preload')
-const MockEmailResend = require('../../support/mock-email-resend-preload')
+const MockEmailManager = require('../../support/mock-email-manager-preload')
 const DataEncryptHandler = require('../../../src/handlers/dataEncrypt')
 const DataValidatorHandler = require('../../../src/handlers/dataValidator')
 const AuthController = require('../../../src/controllers/auth')
@@ -322,7 +322,7 @@ test('AuthController.changePassword — returns 401 when the current password is
 test('AuthController.forgotPassword — returns 200 with null content whether or not the email exists', async () => {
 	const repository = MockRepository.getInstance()
 	await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
-	const mockEmail = MockEmailResend.getInstance()
+	const mockEmail = MockEmailManager.getInstance()
 	mockEmail.send = async () => ({ id: 'mock-email-id' })
 	const controller = AuthController.getInstance()
 

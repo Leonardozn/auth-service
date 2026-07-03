@@ -4,7 +4,7 @@ const SendPasswordResetEmail = require('../../../../src/services/commands/sendPa
 
 test('SendPasswordResetEmail — sends the email with the reset link embedded', async () => {
 	let capturedConfig
-	const emailResendHandler = {
+	const emailManagerHandler = {
 		send: async (config) => {
 			capturedConfig = config
 			return { id: 'resend-id' }
@@ -13,7 +13,7 @@ test('SendPasswordResetEmail — sends the email with the reset link embedded', 
 	const command = SendPasswordResetEmail.getInstance()
 
 	const result = await command.execute({
-		emailResendHandler,
+		emailManagerHandler,
 		apiUrl: 'https://api.resend.com/emails',
 		resendToken: 're_test',
 		from: 'onboarding@resend.dev',

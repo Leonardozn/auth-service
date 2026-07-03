@@ -1,6 +1,6 @@
-const EmailResend = require('@auth-service/email-resend')
+const EmailManager = require('@auth-service/email-manager')
 
-class EmailResendHandler {
+class EmailManagerHandler {
 	/**
 	 * @private
 	 * @static
@@ -10,14 +10,14 @@ class EmailResendHandler {
 	/**
 	 * @private
 	 */
-	emailResend
+	emailManager
 
 	constructor() {
-		this.emailResend = EmailResend.getInstance()
+		this.emailManager = EmailManager.getInstance()
 	}
 
 	static getInstance() {
-		if (!this.instance) this.instance = new EmailResendHandler()
+		if (!this.instance) this.instance = new EmailManagerHandler()
 		return this.instance
 	}
 
@@ -33,8 +33,8 @@ class EmailResendHandler {
 	 * @returns { Promise<Object> } The Resend API response data.
 	 */
 	send(config) {
-		return this.emailResend.send(config)
+		return this.emailManager.send(config)
 	}
 }
 
-module.exports = EmailResendHandler
+module.exports = EmailManagerHandler
