@@ -20,6 +20,9 @@ class RoleModel {
 			},
 			active: {
 				type: Boolean
+			},
+			maxSessions: {
+				type: Number
 			}
 		}, {
 			collection: 'roles',

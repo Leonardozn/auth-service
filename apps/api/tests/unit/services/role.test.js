@@ -11,7 +11,8 @@ const luxon = DataValidatorHandler.getInstance().getLuxon()
 // validation are value-preserving for these types (see data-validator/contract templates).
 const SAMPLE = {
 		"name": "sample text",
-		"active": true
+		"active": true,
+		"maxSessions": 3
 	}
 
 const SEED_ID = '64b0c0ffee1234567890abce'

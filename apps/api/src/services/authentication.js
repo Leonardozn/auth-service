@@ -15,6 +15,7 @@ const ComputeExpiryDate = require('./commands/computeExpiryDate')
 const FindSessionByToken = require('./commands/findSessionByToken')
 const ExtractBearerToken = require('./commands/extractBearerToken')
 const RemoveSessionByToken = require('./commands/removeSessionByToken')
+const EnforceSessionLimit = require('./commands/enforceSessionLimit')
 
 class AuthenticationService {
 	/**
@@ -40,6 +41,7 @@ class AuthenticationService {
 		this.findSessionByToken = FindSessionByToken.getInstance()
 		this.extractBearerToken = ExtractBearerToken.getInstance()
 		this.removeSessionByToken = RemoveSessionByToken.getInstance()
+		this.enforceSessionLimit = EnforceSessionLimit.getInstance()
 	}
 
 	static getInstance() {
@@ -75,10 +77,13 @@ class AuthenticationService {
 		// Step 2: a deactivated account may not start a new session
 		if (user.active === false) throw new ForbiddenError('Account is deactivated.')
 
-		// Step 3: issue a fresh access/refresh token pair
+		// Step 3: evict the oldest session if the user's role has a configured session limit
+		await this.enforceSessionLimit.execute({ repository: this.repository, userId: String(user._id), roleId: user.role })
+
+		// Step 4: issue a fresh access/refresh token pair
 		const tokenPair = this.issueTokenPair.execute(this._tokenPairConfig())
 
-		// Step 4: persist a new session for this login
+		// Step 5: persist a new session for this login
 		await this.repository.add('session', { data: { user: String(user._id), ...tokenPair } })
 
 		return {

@@ -28,13 +28,14 @@ const RoleController = require('../controllers/role')
  *             properties:
  *               name: { type: string }
  *               active: { type: boolean }
- *           example: { name: "contributor", active: true }
+ *               maxSessions: { type: integer, description: "Max concurrent Sessions users with this role may hold. Omitted or <= 0 means unlimited - on login, the oldest session is evicted once the limit is reached." }
+ *           example: { name: "contributor", active: true, maxSessions: 3 }
  *     responses:
  *       200:
  *         description: Role created
  *         content:
  *           application/json:
- *             example: { success: true, message: "Success!", statusCode: 200, content: { name: "contributor", active: true } }
+ *             example: { success: true, message: "Success!", statusCode: 200, content: { name: "contributor", active: true, maxSessions: 3 } }
  *       400:
  *         description: |
  *           Validation error (missing/invalid field). Zod reports the generic message
@@ -167,13 +168,14 @@ const RoleController = require('../controllers/role')
  *             properties:
  *               name: { type: string }
  *               active: { type: boolean }
- *           example: { name: "editor-put", active: true }
+ *               maxSessions: { type: integer, description: "Max concurrent Sessions users with this role may hold. Omitted or <= 0 means unlimited - on login, the oldest session is evicted once the limit is reached." }
+ *           example: { name: "editor-put", active: true, maxSessions: 3 }
  *     responses:
  *       200:
  *         description: Role replaced
  *         content:
  *           application/json:
- *             example: { success: true, message: "Success!", statusCode: 200, content: { name: "editor-put", active: true } }
+ *             example: { success: true, message: "Success!", statusCode: 200, content: { name: "editor-put", active: true, maxSessions: 3 } }
  *       400:
  *         description: |
  *           Either a validation error (same "Invalid input" shape as `POST /role`), or no role
@@ -216,6 +218,7 @@ const RoleController = require('../controllers/role')
  *             properties:
  *               name: { type: string }
  *               active: { type: boolean }
+ *               maxSessions: { type: integer, description: "Max concurrent Sessions users with this role may hold. Omitted or <= 0 means unlimited - on login, the oldest session is evicted once the limit is reached." }
  *           example: { name: "editor-updated" }
  *     responses:
  *       200:
