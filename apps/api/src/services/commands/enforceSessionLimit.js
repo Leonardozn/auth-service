@@ -17,8 +17,10 @@ class EnforceSessionLimit {
 	 * about to be created by login().
 	 * @param { Object } config
 	 * @param { Object } config.repository - The repository instance.
-	 * @param { String } config.userId - The id of the user about to start a new session.
-	 * @param { String } config.roleId - The id of that user's Role.
+	 * @param { ObjectId|String } config.userId - The id of the user about to start a new session -
+	 * pass it exactly as read from the repository (never re-stringified), since repository.list()
+	 * runs a Mongo aggregation that does not cast query values against the schema.
+	 * @param { ObjectId|String } config.roleId - The id of that user's Role, same caveat as userId.
 	 */
 	async execute({ repository, userId, roleId }) {
 		if (!roleId) return
