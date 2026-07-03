@@ -138,7 +138,7 @@ class AccountManagementService {
 
 	async editProfile(config = {}) {
 		const { id, authorizationHeader } = config
-		const { name, email } = this.accountInterface.getEditProfileInterface().parse(config.body)
+		const { name, email, active } = this.accountInterface.getEditProfileInterface().parse(config.body)
 
 		// Step 1: identify the authenticated user via the access token
 		const token = this.extractBearerToken.execute({ authorizationHeader })
@@ -151,23 +151,30 @@ class AccountManagementService {
 		})
 
 		// Step 2: only the account's own owner or an admin may edit it
+		const isSelf = String(session.user) === String(id)
 		await this.authorizeAccountAccess.execute({ repository: this.repository, sessionUserId: session.user, targetUserId: id })
 
 		// Step 3: reject an email already taken by a different user
 		if (email) await this.checkEmailAvailable.execute({ repository: this.repository, email, excludeUserId: id })
 
-		// Step 4: apply only the provided fields, reusing the User model's own service method
+		// Step 4: apply only the provided fields, reusing the User model's own service method.
+		// `active` (de/reactivation) is admin-only - reaching this point with !isSelf already
+		// proves the caller is an admin (authorizeAccountAccess only allows self or admin through).
+		// Self-deactivation goes through POST /auth/deactivate instead, which also revokes sessions.
 		const data = {}
 		if (name !== undefined) data.name = name
 		if (email !== undefined) data.email = email
+		if (active !== undefined && !isSelf) data.active = active
 
 		return this.userService.update({ id, body: data })
 	}
 
-	async deleteAccount(config = {}) {
-		const { id, authorizationHeader } = config
+	async deactivateAccount(config = {}) {
+		const { authorizationHeader } = config
 
-		// Step 1: identify the authenticated user via the access token
+		// Step 1: identify the authenticated user via the access token - this endpoint only ever
+		// acts on the caller's own account (no :id - see DOCUMENTATION.md "Desactivar la propia
+		// cuenta"); an admin deactivating someone else uses PATCH /user/:id { active: false } instead.
 		const token = this.extractBearerToken.execute({ authorizationHeader })
 		const session = await this.findSessionByToken.execute({
 			repository: this.repository,
@@ -177,35 +184,23 @@ class AccountManagementService {
 			token
 		})
 
-		// Step 2: only the account's own owner or an admin may delete it
-		await this.authorizeAccountAccess.execute({ repository: this.repository, sessionUserId: session.user, targetUserId: id })
-
-		// Step 3: delete the user and cascade its own Session/PasswordResetToken records together -
-		// three collections are written, so this runs inside a transaction (cv-service is not
-		// notified of the deletion, per DOCUMENTATION.md's modularity note - its Curriculum records
-		// are orphaned by id on purpose).
+		// Step 2: mark the account inactive and revoke its sessions/reset tokens together - three
+		// collections are written, so this runs inside a transaction (data-transactions-multi-write).
 		const { authDbMongodb } = this.dbConnectionHandler.getConnection()
 		const dbSession = await authDbMongodb.startSession()
-		// entity-queries' list() runs a raw aggregation ($match), which - unlike Mongoose's normal
-		// query methods - never auto-casts a plain string to ObjectId. Session/PasswordResetToken's
-		// `user` field is ObjectId-typed, so deleteResourcesByUser's lookup silently matches nothing
-		// unless userId is already a real ObjectId (as it naturally is when it comes from a prior
-		// aggregate read, e.g. session.user in changePassword/resetPassword - but `id` here is a raw
-		// route param string, so it must be cast explicitly).
-		const targetUserId = new authDbMongodb.Types.ObjectId(id)
 
-		let result
+		let user
 		try {
 			await dbSession.withTransaction(async () => {
-				result = await this.userService.remove({ id, options: { session: dbSession } })
-				await this.deleteResourcesByUser.execute({ repository: this.repository, schemaName: 'session', userId: targetUserId, options: { session: dbSession } })
-				await this.deleteResourcesByUser.execute({ repository: this.repository, schemaName: 'password_reset_token', userId: targetUserId, options: { session: dbSession } })
+				user = await this.userService.update({ id: session.user, body: { active: false }, options: { session: dbSession } })
+				await this.deleteResourcesByUser.execute({ repository: this.repository, schemaName: 'session', userId: session.user, options: { session: dbSession } })
+				await this.deleteResourcesByUser.execute({ repository: this.repository, schemaName: 'password_reset_token', userId: session.user, options: { session: dbSession } })
 			})
 		} finally {
 			dbSession.endSession()
 		}
 
-		return result
+		return user
 	}
 }
 

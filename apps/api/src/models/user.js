@@ -27,6 +27,9 @@ class UserModel {
 			role: {
 				type: Schema.Types.ObjectId,
 				ref: 'roles'
+			},
+			active: {
+				type: Boolean
 			}
 		}, {
 			collection: 'users',

@@ -57,7 +57,8 @@ class AccountManagementInterfaces {
 
 		this.editProfileInterface = this.dataValidatorHandler.validate({
 			name: { type: this.types.string, optional: true },
-			email: { type: this.types.string, optional: true }
+			email: { type: this.types.string, optional: true },
+			active: { type: this.types.boolean, optional: true }
 		})
 	}
 

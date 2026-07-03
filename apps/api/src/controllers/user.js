@@ -111,7 +111,7 @@ class UserController {
 	
 	async remove(req, res) {
 		try {
-			const user = await this.accountManagementService.deleteAccount({ id: req.params.id, authorizationHeader: req.headers.authorization })
+			const user = await this.userService.remove({ id: req.params.id })
 			const response = this.handleResponseHandler.buildResponse(user)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)

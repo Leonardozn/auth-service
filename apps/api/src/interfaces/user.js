@@ -50,7 +50,8 @@ class UserInterfaces {
 			name: { type: this.types.string, optional: true },
 			email: { type: this.types.string, optional: true },
 			password: { type: this.types.string, optional: true },
-			role: { type: this.types.objectId, optional: true }
+			role: { type: this.types.objectId, optional: true },
+			active: { type: this.types.boolean, optional: true }
 		})
   
 		this.updateInterface = this.dataValidatorHandler.validate({
@@ -58,6 +59,7 @@ class UserInterfaces {
 			email: { type: this.types.string, optional: true },
 			password: { type: this.types.string, optional: true },
 			role: { type: this.types.objectId, optional: true },
+			active: { type: this.types.boolean, optional: true },
 			createdAt: { type: this.types.datetime, optional: true },
 			updatedAt: { type: this.types.datetime, optional: true }
 		})
@@ -68,6 +70,7 @@ class UserInterfaces {
 			email: { type: this.types.string, optional: true, transform: true, allowAdvance: true },
 			password: { type: this.types.string, optional: true, transform: true, allowAdvance: true },
 			role: { type: this.types.objectId, optional: true, transform: true, allowAdvance: true },
+			active: { type: this.types.boolean, optional: true, transform: true, allowAdvance: true },
 			createdAt: { type: this.types.datetime, optional: true, transform: true },
 			updatedAt: { type: this.types.datetime, optional: true, transform: true }
 		})
@@ -78,6 +81,7 @@ class UserInterfaces {
 			email: { type: this.types.string, optional: true, isVirtual: true },
 			password: { type: this.types.string, optional: true, isVirtual: true },
 			role: { type: this.types.objectId, optional: true, isVirtual: true },
+			active: { type: this.types.boolean, optional: true, isVirtual: true },
 			createdAt: { type: this.types.datetime, optional: true, isVirtual: true },
 			updatedAt: { type: this.types.datetime, optional: true, isVirtual: true }
 		})
