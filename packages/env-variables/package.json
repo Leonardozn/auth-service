@@ -1,0 +1,9 @@
+{
+	"name": "@auth-service/env-variables",
+	"version": "1.0.0",
+	"description": "List of environment variables.",
+	"main": "index",
+	"dependencies": {
+		"dotenv": "16.4.5"
+	}
+}

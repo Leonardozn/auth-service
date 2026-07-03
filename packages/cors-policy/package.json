@@ -1,0 +1,9 @@
+{
+	"name": "@auth-service/cors-policy",
+	"version": "1.0.0",
+	"description": "Cors policy configuration.",
+	"main": "index",
+	"dependencies": {
+		"cors": "2.8.5"
+	}
+}

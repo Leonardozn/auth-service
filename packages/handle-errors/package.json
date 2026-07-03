@@ -1,0 +1,6 @@
+{
+	"name": "@auth-service/handle-errors",
+	"version": "1.0.0",
+	"description": "Class to manage errors.",
+	"main": "index"
+}

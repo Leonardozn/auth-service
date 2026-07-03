@@ -23,32 +23,40 @@ recursos. auth-service es la fuente de verdad de *quién es* el usuario y *qué 
 
 > Códigos de estado: ceñirse a lo que maneja `handle-errors` (201/200, 400, 401, 403, 404,
 > 500, 502). No usar 409 (email duplicado → 400). El hashing de contraseñas usa el paquete
-> base `data-encrypt` (no crear paquete nuevo para eso).
+> base `data-encrypt` (no crear paquete nuevo para eso). Los tiempos de token y la config de
+> Resend se leen de variables de entorno (ver "Variables de entorno").
 
-1. Definir y generar los modelos del módulo Authentication: `Role`, `User`, `Session`.
+1. Definir y generar los modelos del módulo Authentication: `Role`, `User`, `Session` (Session
+   con `accessToken`/`accessTokenExpiresAt` y `refreshToken`/`refreshTokenExpiresAt`).
 2. Definir y generar el modelo del módulo AccountManagement: `PasswordResetToken`.
 3. Crear el paquete `@backend/email-resend` envolviendo `resend` (por `proc-no-new-packages`),
    consumido a través de su handler. (Necesario antes de la recuperación de contraseña.)
-4. Implementar el contrato: registrar un usuario (`POST /auth/register`).
-5. Implementar el contrato: iniciar sesión (`POST /auth/login`).
-6. Implementar el contrato: validar un token de sesión (`POST /auth/validate`) — base del
+4. Crear las variables de entorno (evars) del proyecto: `SESSION_TOKEN_DEFAULT_TIME`,
+   `REFRESH_TOKEN_DEFAULT_TIME`, `RESET_TOKEN_DEFAULT_TIME`, `RESEND_TOKEN`, `RESEND_API_URL`,
+   `ADMIN_MAIL_FROM`, `PASSWORD_RESET_URL_BASE` (ver "Variables de entorno").
+5. Implementar el contrato: registrar un usuario (`POST /auth/register`).
+6. Implementar el contrato: iniciar sesión (`POST /auth/login`) — emite access + refresh tokens.
+7. Implementar el contrato: renovar la sesión (`POST /auth/refresh`).
+8. Implementar el contrato: validar un token de sesión (`POST /auth/validate`) — base del
    Protocolo de autenticación consumido por cv-service.
-7. Implementar el contrato: cerrar sesión (`POST /auth/logout`).
-8. Implementar el contrato: cambiar contraseña (`POST /auth/change-password`).
-9. Implementar el contrato: solicitar recuperación (`POST /auth/forgot-password`) — usa
-   `@backend/email-resend`.
-10. Implementar el contrato: enviar el email de recuperación vía Resend (auth-service → Resend)
+9. Implementar el contrato: cerrar sesión (`POST /auth/logout`).
+10. Implementar el contrato: cambiar contraseña (`POST /auth/change-password`).
+11. Implementar el contrato: solicitar recuperación (`POST /auth/forgot-password`) — usa
+    `@backend/email-resend`.
+12. Implementar el contrato: enviar el email de recuperación vía Resend (auth-service → Resend)
     — usa `@backend/email-resend`.
-11. Implementar el contrato: restablecer contraseña (`POST /auth/reset-password`).
-12. Implementar el contrato: gestión de cuenta (`PATCH /user/:id`, `DELETE /user/:id`).
-13. Implementar la lógica de negocio — Authentication → Registrar un Usuario.
-14. Implementar la lógica de negocio — Authentication → Iniciar Sesión de un Usuario.
-15. Implementar la lógica de negocio — Authentication → Cerrar Sesión.
-16. Implementar la lógica de negocio — Authentication → Validar un Token.
-17. Implementar la lógica de negocio — AccountManagement → Cambiar Contraseña.
-18. Implementar la lógica de negocio — AccountManagement → Solicitar Recuperación de Contraseña.
-19. Implementar la lógica de negocio — AccountManagement → Restablecer Contraseña.
-20. Implementar la lógica de negocio — AccountManagement → Editar Perfil / Eliminar Cuenta.
+13. Implementar el contrato: restablecer contraseña (`POST /auth/reset-password`).
+14. Implementar el contrato: gestión de cuenta — editar perfil (`PATCH /user/:id`) y desactivar
+    la propia cuenta (`POST /auth/deactivate`).
+15. Implementar la lógica de negocio — Authentication → Registrar un Usuario.
+16. Implementar la lógica de negocio — Authentication → Iniciar Sesión de un Usuario.
+17. Implementar la lógica de negocio — Authentication → Refrescar la Sesión.
+18. Implementar la lógica de negocio — Authentication → Cerrar Sesión.
+19. Implementar la lógica de negocio — Authentication → Validar un Token.
+20. Implementar la lógica de negocio — AccountManagement → Cambiar Contraseña.
+21. Implementar la lógica de negocio — AccountManagement → Solicitar Recuperación de Contraseña.
+22. Implementar la lógica de negocio — AccountManagement → Restablecer Contraseña.
+23. Implementar la lógica de negocio — AccountManagement → Editar Perfil / Desactivar Cuenta.
 
 ## 5. Artifacts
 
@@ -95,15 +103,34 @@ Manejados por el paquete `handle-errors`:
 auth-service es la única autoridad de identidad y define el protocolo que cualquier otro servicio
 debe seguir para autorizar solicitudes. Ningún otro servicio interpreta el token por su cuenta:
 
-1. En el login, auth-service emite un token de sesión opaco (almacenado en `Session` con
-   `expiresAt`). El formato, la expiración y la revocación son responsabilidad exclusiva de
-   auth-service.
-2. El cliente envía el token como `Authorization: Bearer <token>`.
-3. Un servicio protegido (cv-service) reenvía el token a `POST /auth/validate`; nunca lo decodifica.
+1. En el login, auth-service emite un par de tokens opacos en la `Session`: un **access token**
+   de corta duración (`SESSION_TOKEN_DEFAULT_TIME`) y un **refresh token** de larga duración
+   (`REFRESH_TOKEN_DEFAULT_TIME`). Formato, expiraciones, rotación y revocación son
+   responsabilidad exclusiva de auth-service.
+2. El cliente envía el **access token** como `Authorization: Bearer <token>`; cuando expira, lo
+   renueva con el refresh token vía `POST /auth/refresh` (no reenvía credenciales).
+3. Un servicio protegido (cv-service) reenvía el access token a `POST /auth/validate`; nunca lo
+   decodifica.
 4. auth-service responde con el `User` autenticado (incluyendo `role`) si es válido, o 401.
 5. El servicio llamador usa el `user` y su `role` para autorizar a nivel de recurso/ruta (RBAC:
    admin es superconjunto de user).
 6. Ante token ausente/inválido/expirado o auth-service caído, se falla cerrado.
+
+### Variables de entorno de auth-service
+
+Evars del proyecto (gestionadas con el CLI de easy-node; `RESEND_TOKEN` es secreto y no se
+commitea — su valor se toma del entorno al crear el evar). Los tiempos usan formato de duración
+(`15m`, `5d`, `30m`). En modo pruebas de Resend bastan `RESEND_TOKEN` y `ADMIN_MAIL_FROM`.
+
+| Variable | Ejemplo / default | Propósito |
+| -------- | ----------------- | --------- |
+| `SESSION_TOKEN_DEFAULT_TIME` | `15m` | Duración del access token de sesión |
+| `REFRESH_TOKEN_DEFAULT_TIME` | `5d` | Duración del refresh token |
+| `RESET_TOKEN_DEFAULT_TIME` | `30m` | Duración del PasswordResetToken de recuperación |
+| `RESEND_TOKEN` | `re_...` (secreto) | API key de Resend |
+| `RESEND_API_URL` | `https://api.resend.com/emails` | Endpoint de envío de Resend |
+| `ADMIN_MAIL_FROM` | `onboarding@resend.dev` | Remitente del email de recuperación |
+| `PASSWORD_RESET_URL_BASE` | `http://localhost:5173/reset-password` | Base del enlace de restablecimiento del email |
 
 ### Contrato: el frontend registra un usuario vía auth-service
 - `POST /auth/register` (acción personalizada)
@@ -114,8 +141,17 @@ debe seguir para autorizar solicitudes. Ningún otro servicio interpreta el toke
 ### Contrato: el frontend inicia sesión de un usuario vía auth-service
 - `POST /auth/login` (acción personalizada)
 - Request: `{ email: <string>, password: <string> }`
-- Respuesta: `{ ..., content: { token: <string>, user: <User> } }`; `content: null` con 401 si
-  las credenciales son inválidas. El `token` se usará como `Authorization: Bearer <token>`.
+- Respuesta: `{ ..., content: { token: <string>, refreshToken: <string>, user: <User> } }`;
+  `content: null` con 401 si las credenciales son inválidas. `token` es el **access token**
+  (`Authorization: Bearer <token>`); `refreshToken` se guarda para renovar el access al expirar.
+
+### Contrato: el frontend renueva la sesión vía auth-service
+- `POST /auth/refresh` (acción personalizada)
+- Request: `{ refreshToken: <string> }`
+- Respuesta: `{ ..., content: { token: <string>, refreshToken: <string>, user: <User> } }` con un
+  nuevo access token y un refresh token rotado si el refresh es válido y no expiró; `content:
+  null` con 401 si es inválido, expirado o ya rotado. El cliente lo usa cuando una solicitud
+  protegida devuelve 401 por access expirado: renueva y reintenta.
 
 ### Contrato: cv-service valida un token de sesión con auth-service
 - `POST /auth/validate` (acción personalizada; base del Protocolo de autenticación)
@@ -146,16 +182,19 @@ debe seguir para autorizar solicitudes. Ningún otro servicio interpreta el toke
 - Respuesta 200 `content: null`; 400 si el token no existe, ya se usó o expiró. Revoca sesiones.
 
 ### Contrato: el frontend gestiona su cuenta vía auth-service
-- CRUD estándar sobre `User`: `PATCH /user/:id` (name/email), `DELETE /user/:id`. Requiere
-  `Authorization: Bearer <token>`; solo la propia cuenta (o un admin sobre cualquiera): un
-  no-dueño sin rol admin recibe 403.
+- Editar perfil: `PATCH /user/:id` (name/email). Desactivar la propia cuenta:
+  `POST /auth/deactivate` (acción personalizada) — marca `User.active = false` y revoca sus
+  sesiones. Requiere `Authorization: Bearer <token>`; solo la propia cuenta (o un admin sobre
+  cualquiera): un no-dueño sin rol admin recibe 403. Un admin reactiva con `PATCH /user/:id`
+  `{ active: true }`.
 - Respuesta: `{ ..., content: <User> | null }`.
 
 ### Contrato: auth-service envía el email de recuperación vía Resend
 - Caller: auth-service · Callee: Resend
-- `POST https://api.resend.com/emails` (API de Resend, no usa el envelope de este proyecto)
-- Request: `{ from, to: <email del usuario>, subject, html }`, con el enlace de restablecimiento
-  y el PasswordResetToken.
+- `POST <RESEND_API_URL>` (default `https://api.resend.com/emails`; API de Resend, no usa el
+  envelope de este proyecto). Auth con `Authorization: Bearer <RESEND_TOKEN>`.
+- Request: `{ from: <ADMIN_MAIL_FROM>, to: <email del usuario>, subject, html }`, con el enlace
+  `<PASSWORD_RESET_URL_BASE>?token=<PasswordResetToken>`.
 - Response: objeto de Resend con el id del email; un no-2xx significa que no se encoló.
 - Failure handling: si Resend falla o no responde, registrar el fallo y responder igualmente
   éxito al frontend (no revela la existencia del email); el usuario puede reintentar.
@@ -184,16 +223,21 @@ Datos configurables (nuevos roles sin cambiar código).
 | email     | string           | sí        | Email de inicio de sesión, único|
 | password  | string           | sí        | Contraseña hasheada (data-encrypt)|
 | role      | reference → Role | sí        | Rol asignado al usuario         |
+| active    | boolean          | sí        | Si la cuenta está activa (inactiva no puede iniciar sesión)|
 | createdAt | datetime         | sí        | Fecha de registro               |
 
 ##### Session
+Par de tokens opacos por login: access (Bearer, corto) y refresh (largo, para renovar). Duraciones
+por evars `SESSION_TOKEN_DEFAULT_TIME` / `REFRESH_TOKEN_DEFAULT_TIME`.
 
-| Campo     | Tipo             | Requerido | Descripción                       |
-| --------- | ---------------- | --------- | --------------------------------- |
-| id        | id               | sí        | Identificador único de la sesión  |
-| user      | reference → User | sí        | Dueño de la sesión                |
-| token     | string           | sí        | Token de sesión opaco (login)     |
-| expiresAt | datetime         | sí        | Fecha de expiración               |
+| Campo                 | Tipo             | Requerido | Descripción                                    |
+| --------------------- | ---------------- | --------- | ---------------------------------------------- |
+| id                    | id               | sí        | Identificador único de la sesión               |
+| user                  | reference → User | sí        | Dueño de la sesión                             |
+| accessToken           | string           | sí        | Access token opaco (Bearer), corta duración    |
+| accessTokenExpiresAt  | datetime         | sí        | Expiración del access (SESSION_TOKEN_DEFAULT_TIME)|
+| refreshToken          | string           | sí        | Refresh token opaco, larga duración            |
+| refreshTokenExpiresAt | datetime         | sí        | Expiración del refresh (REFRESH_TOKEN_DEFAULT_TIME)|
 
 #### Módulo: AccountManagement
 
@@ -214,8 +258,9 @@ Token de un solo uso para restablecer la contraseña, enviado por email vía Res
 
 #### Módulo: Authentication
 Usa: Role, User, Session
-Responsabilidad: Registrar y autenticar usuarios, emitir tokens de sesión y validar tokens para
-otros servicios, siendo la autoridad del Protocolo de autenticación.
+Responsabilidad: Registrar y autenticar usuarios, emitir y renovar los tokens de sesión (access +
+refresh), cerrar sesión y validar tokens para otros servicios, siendo la autoridad del Protocolo
+de autenticación.
 
 #### Proceso: Registrar un Usuario
 1. Recibe name, email y password.
@@ -230,20 +275,32 @@ Resultado: Un User capaz de iniciar sesión, o error si el email ya estaba tomad
 1. Recibe email y password.
 2. Busca el User por email.
 3. Si no coincide el User o el hash de la contraseña → error 401, sin token.
-4. Crea una Session con `expiresAt` y devuelve su token opaco.
+4. Si el User está desactivado (`active = false`) → error 403 ("cuenta desactivada"), sin token.
+5. Crea una Session con un access token (expira en `SESSION_TOKEN_DEFAULT_TIME`) y un refresh
+   token (expira en `REFRESH_TOKEN_DEFAULT_TIME`), y devuelve ambos.
 
-Resultado: Un token para `Authorization: Bearer`, o error ante credenciales inválidas.
+Resultado: Un access token (para `Authorization: Bearer`) y un refresh token, o error ante
+credenciales inválidas.
+
+#### Proceso: Refrescar la Sesión
+1. Recibe el refresh token.
+2. Busca una Session cuyo `refreshToken` coincida y cuyo `refreshTokenExpiresAt` no haya vencido.
+3. Si no la encuentra (inexistente, expirado o ya rotado) → 401, sin renovar.
+4. Genera un nuevo access token y rota el refresh token, actualiza sus expiraciones y devuelve
+   ambos con el User.
+
+Resultado: Un nuevo par access/refresh, o 401 si el refresh no es válido (re-login).
 
 #### Proceso: Cerrar Sesión
-1. Recibe el token del header.
-2. Elimina la Session con ese token, si existe.
+1. Recibe el access token del header.
+2. Elimina la Session cuyo `accessToken` coincida, si existe (revoca también su refresh).
 
-Resultado: Token revocado; validaciones futuras devuelven 401. Idempotente.
+Resultado: Sesión revocada (access y refresh); validaciones futuras devuelven 401. Idempotente.
 
 #### Proceso: Validar un Token
-1. Recibe el token.
-2. Busca una Session no expirada con ese token.
-3. Si no la encuentra (inexistente o expirada) → 401, content null.
+1. Recibe el access token.
+2. Busca una Session cuyo `accessToken` coincida y cuyo `accessTokenExpiresAt` no haya vencido.
+3. Si no la encuentra (inexistente o access expirado) → 401, content null.
 4. Si la encuentra → devuelve el User (incluyendo su role).
 
 Resultado: El User autenticado, o no autorizado. auth-service decide la validez del token.
@@ -278,12 +335,14 @@ Resultado: Si el email existe, el usuario recibe un enlace; la respuesta es la m
 
 Resultado: Contraseña restablecida y sesiones cerradas, o error si el token no es válido.
 
-#### Proceso: Editar Perfil / Eliminar Cuenta
+#### Proceso: Editar Perfil / Desactivar Cuenta
 1. Valida la sesión e identifica al User autenticado.
-2. Confirma que el `:id` objetivo es el propio usuario (o que es admin); si no, 403.
-3. Editar perfil: actualiza name/email (rechazando un email ya tomado por otro User). Eliminar:
-   borra el User y en cascada sus Session y PasswordResetToken.
+2. Editar perfil (`PATCH /user/:id`): confirma que el `:id` es el propio usuario (o admin); si no,
+   403. Actualiza name/email (rechazando un email ya tomado por otro User).
+3. Desactivar (`POST /auth/deactivate`): marca `User.active = false` y revoca (elimina) las
+   Session y PasswordResetToken del usuario. Un admin reactiva con `PATCH /user/:id`
+   `{ active: true }`.
 
-Resultado: Perfil actualizado o cuenta eliminada, o error de autorización/validación.
-Nota de modularidad: cv-service no se entera de la baja; sus Curriculum quedan huérfanos por id
-(sin limpieza en cascada entre servicios, por diseño).
+Resultado: Perfil actualizado o cuenta desactivada, o error de autorización/validación.
+Nota de modularidad: al ser desactivación (soft delete), el User sigue existiendo por id, así que
+los Curriculum de cv-service NO quedan huérfanos; no hace falta cascada entre servicios.

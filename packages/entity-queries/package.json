@@ -1,0 +1,10 @@
+{
+	"name": "@auth-service/entity-queries",
+	"version": "1.0.0",
+	"description": "Query constructor.",
+	"main": "index",
+	"dependencies": {
+		"@auth-service/handle-errors": "*",
+		"@auth-service/db-connections": "*"
+	}
+}

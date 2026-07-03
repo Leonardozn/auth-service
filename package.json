@@ -1,21 +1,29 @@
 {
-	"name": "auth-service",
-	"version": "1.0.0",
-	"description": "",
-	"workspaces": [
-		"apps/*",
-		"packages/*"
-	],
-	"scripts": {
-		"prepare": "git config core.hooksPath .githooks",
-		"lint": "eslint .",
-		"test": "node -e \"process.exit(0)\""
-	},
-	"devDependencies": {
-		"@commitlint/cli": "21.0.2",
-		"@commitlint/config-conventional": "21.0.2",
-		"@eslint/js": "9.39.4",
-		"eslint": "9.39.4",
-		"globals": "17.4.0"
-	}
+  "name": "auth-service",
+  "version": "1.0.0",
+  "description": "",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "start": "node apps/api/index.js",
+    "stop": "pkill -f node apps/api/index.js",
+    "start-api": "node apps/api/index.js",
+    "stop-api": "pkill -f node apps/api/index.js",
+    "prepare": "git config core.hooksPath .githooks",
+    "lint": "eslint .",
+    "test": "node --test \"apps/*/tests/**/*.test.js\"",
+    "test:unit": "node --test \"apps/*/tests/unit/**/*.test.js\"",
+    "test:e2e": "node --test \"apps/*/tests/e2e/**/*.test.js\"",
+    "test:smoke": "node --test \"apps/*/tests/smoke/**/*.test.js\"",
+    "test:crud": "node --test \"apps/*/tests/crud/**/*.test.js\""
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.0.2",
+    "@commitlint/config-conventional": "21.0.2",
+    "@eslint/js": "9.39.4",
+    "eslint": "9.39.4",
+    "globals": "17.4.0"
+  }
 }
