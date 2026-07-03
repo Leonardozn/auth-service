@@ -59,8 +59,9 @@ class AuthenticationService {
 		// Step 3: hash the plain-text password before persisting it
 		const hashedPassword = await this.hashPassword.execute({ dataEncryptHandler: this.dataEncryptHandler, password })
 
-		// Step 4: create the user (active by default), reusing the User model's own service method
-		const user = await this.userService.add({ body: { name, email, password: hashedPassword, role: String(role._id), active: true } })
+		// Step 4: create the user (active by default), reusing the User model's own service method -
+		// trustedRoleAssignment skips the admin check since this role came from resolveDefaultRole, not the client
+		const user = await this.userService.add({ body: { name, email, password: hashedPassword, role: String(role._id), active: true }, trustedRoleAssignment: true })
 
 		return { user }
 	}

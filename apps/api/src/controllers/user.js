@@ -41,7 +41,7 @@ class UserController {
 
 	async add(req, res) {
 		try {
-			const user = await this.userService.add({ body: req.body, files: req.files })
+			const user = await this.userService.add({ body: req.body, files: req.files, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(user)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -97,7 +97,7 @@ class UserController {
 
 	async replace(req, res) {
 		try {
-			const user = await this.userService.replace({ body: req.body, id: req.params.id, files: req.files })
+			const user = await this.userService.replace({ body: req.body, id: req.params.id, files: req.files, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(user)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)

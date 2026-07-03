@@ -18,6 +18,7 @@ const fs = require('node:fs')
 const SEED_ID = process.env.MOCK_SEED_ID || ''
 const SEED_SCHEMA = process.env.MOCK_SEED_SCHEMA || ''
 const SEED_RECORD = process.env.MOCK_SEED_RECORD || ''
+const SEED_RECORDS = process.env.MOCK_SEED_RECORDS || ''
 const CAPTURE_FILE = process.env.MOCK_CAPTURE_FILE || ''
 
 function objectId() {
@@ -96,6 +97,16 @@ class MockRepository {
 			const now = new Date().toISOString()
 			const record = JSON.parse(SEED_RECORD)
 			this._collection(SEED_SCHEMA).set(SEED_ID, { _id: SEED_ID, ...record, createdAt: now, updatedAt: now })
+		}
+
+		// MOCK_SEED_RECORDS seeds several related documents at once (e.g. an admin's role, user,
+		// and session) - MOCK_SEED_SCHEMA/ID/RECORD above only seeds one, which isn't enough now
+		// that admin-gated routes need a whole authenticated identity to already exist pre-boot.
+		if (SEED_RECORDS) {
+			const now = new Date().toISOString()
+			for (const { schema, id, record } of JSON.parse(SEED_RECORDS)) {
+				this._collection(schema).set(id, { _id: id, ...record, createdAt: now, updatedAt: now })
+			}
 		}
 	}
 
