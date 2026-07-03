@@ -3,7 +3,7 @@ const UserService = require('./user')
 const AccountManagementInterfaces = require('../interfaces/accountManagement')
 const DataEncryptHandler = require('../handlers/dataEncrypt')
 const DataValidatorHandler = require('../handlers/dataValidator')
-const EmailResendHandler = require('../handlers/emailResend')
+const EmailManagerHandler = require('../handlers/emailManager')
 const DbConnectionHandler = require('../handlers/dbConnections')
 const envVariables = require('../handlers/envVariables')
 const { UnauthorizedError } = require('../handlers/handleErrors')
@@ -33,7 +33,7 @@ class AccountManagementService {
 		this.accountInterface = AccountManagementInterfaces.getInstance()
 		this.dataEncryptHandler = DataEncryptHandler.getInstance()
 		this.luxon = DataValidatorHandler.getInstance().getLuxon()
-		this.emailResendHandler = EmailResendHandler.getInstance()
+		this.emailManagerHandler = EmailManagerHandler.getInstance()
 		this.dbConnectionHandler = DbConnectionHandler.getInstance()
 
 		this.extractBearerToken = ExtractBearerToken.getInstance()
@@ -99,7 +99,7 @@ class AccountManagementService {
 			// Step 3: send the recovery email - a delivery failure must never surface to the client
 			try {
 				await this.sendPasswordResetEmail.execute({
-					emailResendHandler: this.emailResendHandler,
+					emailManagerHandler: this.emailManagerHandler,
 					// Fallbacks match the documented defaults (DOCUMENTATION.md "Variables de entorno") -
 					// keeps this working (and testable without a local .env) even before these are set.
 					apiUrl: envVariables.RESEND_API_URL || 'https://api.resend.com/emails',

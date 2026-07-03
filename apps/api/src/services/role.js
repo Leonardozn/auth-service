@@ -3,11 +3,15 @@ const Contract = require('../contracts')
 const RoleInterfaces = require('../interfaces/role')
 const RoleContract = require('../contracts/role')
 const HandleResponseHandler = require('../handlers/handleResponse')
+const DataValidatorHandler = require('../handlers/dataValidator')
 const { BadRequestError } = require('../handlers/handleErrors')
 const FileManagerHandler = require('../handlers/fileManager')
 const path = require('path')
 const crypto = require('crypto')
 const envVariables = require('../handlers/envVariables')
+const ExtractBearerToken = require('./commands/extractBearerToken')
+const FindSessionByToken = require('./commands/findSessionByToken')
+const RequireAdminUser = require('./commands/requireAdminUser')
 
 class RoleService {
 	/**
@@ -52,6 +56,11 @@ class RoleService {
 
 		this.fileManagerHandler = FileManagerHandler.getInstance()
 		this.storageProvider = this.fileManagerHandler.getProvider()
+
+		this.luxon = DataValidatorHandler.getInstance().getLuxon()
+		this.extractBearerToken = ExtractBearerToken.getInstance()
+		this.findSessionByToken = FindSessionByToken.getInstance()
+		this.requireAdminUser = RequireAdminUser.getInstance()
 	}
 
 	static getInstance() {
@@ -60,10 +69,13 @@ class RoleService {
 	}
 
 	async add(config = {}) {
-		const { body, files = [], options = {} } = config
+		const { body, files = [], options = {}, authorizationHeader } = config
 		const payload = Array.isArray(body) ? [...body] : { ...body }
-		
-		// 1. Initial creation
+
+		// 1. Roles are a platform-wide RBAC primitive - only an admin may create one
+		await this._requireAdminSession(authorizationHeader)
+
+		// 2. Initial creation
 		const unflattenedBody = Array.isArray(payload) ? payload.map(p => this._unflatten(p)) : this._unflatten(payload)
 		const data = Array.isArray(unflattenedBody)
 			? unflattenedBody.map(el => this.roleInterface.getCreateInterface().parse(el))
@@ -71,7 +83,7 @@ class RoleService {
 		
 		let role = await this.repository.add('role', { data, options })
 
-		// 2. Handle files if present
+		// 3. Handle files if present
 		if (files && files.length) {
 			const roleId = Array.isArray(role) ? role[0]._id : role._id
 			const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
@@ -112,7 +124,12 @@ class RoleService {
 	}
 	
 	async findOne(config = {}) {
-		const { id } = config
+		const { id, authorizationHeader, skipAuthCheck = false } = config
+
+		// 1. Reading role records requires an authenticated session - skipped for internal reuse
+		// (update/replace/remove re-reading the record they already authenticated for)
+		if (!skipAuthCheck) await this._requireAuthenticatedSession(authorizationHeader)
+
 		let virtuals = {}
 		let relations = {}
 		const query = this.roleInterface.getQueryInterface().parse({ _id: id, ...config.query?.query })
@@ -128,6 +145,9 @@ class RoleService {
 	}
 	
 	async list(config = {}) {
+		// 1. Reading role records requires an authenticated session
+		await this._requireAuthenticatedSession(config.authorizationHeader)
+
 		let query = {}
 		let virtuals = {}
 		let relations = {}
@@ -145,18 +165,22 @@ class RoleService {
 	}
 	
 	async update(config = {}) {
-		const { body, id, files = [], options = {} } = config
+		const { body, id, files = [], options = {}, authorizationHeader } = config
+
+		// 1. Roles are a platform-wide RBAC primitive - only an admin may edit one
+		await this._requireAdminSession(authorizationHeader)
+
 		const data = this._unflatten(body)
-		const existingRole = await this.findOne({ id })
+		const existingRole = await this.findOne({ id, skipAuthCheck: true })
 		const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
 
-		// 1. Initial update with JSON data
+		// 2. Initial update with JSON data
 		const payload = this.roleInterface.getUpdateInterface().parse(data)
 		let role = await this.repository.update('role', { id, data: payload, options })
-		
+
 		const existingObj = existingRole.toObject ? existingRole.toObject() : existingRole;
 
-		// 2. Handle files if present
+		// 3. Handle files if present
 		if (files && files.length) {
 			const updates = {}
 			const savedFiles = []
@@ -194,7 +218,7 @@ class RoleService {
 			}
 		}
 
-		// 3. Proactive cleanup: Map paths from both objects to ensure we catch removed fields
+		// 4. Proactive cleanup: Map paths from both objects to ensure we catch removed fields
 		const mappedPathsData = this._getFilePaths(data)
 		const mappedPathsOld = this._getFilePaths(existingObj)
 		const allPaths = [...new Set([...mappedPathsData, ...mappedPathsOld])]
@@ -222,18 +246,22 @@ class RoleService {
 	}
 
 	async replace(config = {}) {
-		const { body, id, files = [], options = {} } = config
+		const { body, id, files = [], options = {}, authorizationHeader } = config
+
+		// 1. Roles are a platform-wide RBAC primitive - only an admin may replace one
+		await this._requireAdminSession(authorizationHeader)
+
 		const data = this._unflatten(body)
-		const existingRole = await this.findOne({ id })
+		const existingRole = await this.findOne({ id, skipAuthCheck: true })
 		const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
-		
-		// 1. Initial replace with JSON data
+
+		// 2. Initial replace with JSON data
 		const payload = this.roleInterface.getUpdateInterface().parse(data)
 		let role = await await this.repository.replace('role', { id, data: payload, options })
 
 		const existingObj = existingRole.toObject ? existingRole.toObject() : existingRole;
 
-		// 2. Handle files if present
+		// 3. Handle files if present
 		if (files && files.length) {
 			const updates = {}
 			const savedFiles = []
@@ -243,7 +271,7 @@ class RoleService {
 					const fieldPath = file.fieldname.replace(/\[(\w+)\]/g, '.$1')
 					const originalName = file.originalname.replace(/\s+/g, '_')
 					const newFilename = `role-${crypto.randomUUID()}-${originalName}`
-					
+
 					const savedFileUrl = await this.storageProvider.saveFile(file, newFilename)
 					savedFiles.push(savedFileUrl)
 
@@ -271,7 +299,7 @@ class RoleService {
 			}
 		}
 
-		// 3. Proactive cleanup: Map paths from both objects to ensure we catch removed fields
+		// 4. Proactive cleanup: Map paths from both objects to ensure we catch removed fields
 		const mappedPathsData = this._getFilePaths(data)
 		const mappedPathsOld = this._getFilePaths(existingObj)
 		const allPaths = [...new Set([...mappedPathsData, ...mappedPathsOld])]
@@ -297,15 +325,19 @@ class RoleService {
 
 		return this.applayContract(role)
 	}
-	
+
 	async remove(config = {}) {
-		const { id, options = {} } = config
-		const existingRole = await this.findOne({ id })
+		const { id, options = {}, authorizationHeader } = config
+
+		// 1. Roles are a platform-wide RBAC primitive - only an admin may delete one
+		await this._requireAdminSession(authorizationHeader)
+
+		const existingRole = await this.findOne({ id, skipAuthCheck: true })
 
 		const existingObj = existingRole.toObject ? existingRole.toObject() : existingRole
 		const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
 		const mappedPaths = this._getFilePaths(existingObj)
-		
+
 		const repositoryResponse = await await this.repository.remove('role', { id, options })
 		
 		if (mappedPaths.length > 0) {
@@ -327,6 +359,33 @@ class RoleService {
 		}
 
 		return repositoryResponse
+	}
+
+	// Authenticates the caller from the access token and requires an admin role - Role is a
+	// platform-wide RBAC primitive, so every mutation on it is admin-only, unconditionally.
+	async _requireAdminSession(authorizationHeader) {
+		const token = this.extractBearerToken.execute({ authorizationHeader })
+		const session = await this.findSessionByToken.execute({
+			repository: this.repository,
+			luxon: this.luxon,
+			tokenField: 'accessToken',
+			expiryField: 'accessTokenExpiresAt',
+			token
+		})
+		await this.requireAdminUser.execute({ repository: this.repository, userId: session.user })
+	}
+
+	// Authenticates the caller from the access token, without requiring any particular role -
+	// used to gate raw model endpoints (Role) that must stay off-limits to anonymous callers.
+	async _requireAuthenticatedSession(authorizationHeader) {
+		const token = this.extractBearerToken.execute({ authorizationHeader })
+		return this.findSessionByToken.execute({
+			repository: this.repository,
+			luxon: this.luxon,
+			tokenField: 'accessToken',
+			expiryField: 'accessTokenExpiresAt',
+			token
+		})
 	}
 
 	applayContract(payload) {

@@ -59,8 +59,9 @@ class AuthenticationService {
 		// Step 3: hash the plain-text password before persisting it
 		const hashedPassword = await this.hashPassword.execute({ dataEncryptHandler: this.dataEncryptHandler, password })
 
-		// Step 4: create the user (active by default), reusing the User model's own service method
-		const user = await this.userService.add({ body: { name, email, password: hashedPassword, role: String(role._id), active: true } })
+		// Step 4: create the user (active by default), reusing the User model's own service method -
+		// trustedRoleAssignment skips the admin check since this role came from resolveDefaultRole, not the client
+		const user = await this.userService.add({ body: { name, email, password: hashedPassword, role: String(role._id), active: true }, trustedRoleAssignment: true })
 
 		return { user }
 	}
@@ -105,8 +106,9 @@ class AuthenticationService {
 		// Step 3: persist the rotated tokens on the existing session
 		await this.repository.update('session', { id: session._id, data: tokenPair })
 
-		// Step 4: return the renewed tokens with the session's user
-		const user = await this.userService.findOne({ id: session.user })
+		// Step 4: return the renewed tokens with the session's user - already authenticated via the
+		// refresh token itself, so this internal read skips User's own session check
+		const user = await this.userService.findOne({ id: session.user, skipAuthCheck: true })
 
 		return {
 			token: tokenPair.accessToken,
@@ -127,8 +129,9 @@ class AuthenticationService {
 			token
 		})
 
-		// Step 2: return the session's user (including role) - the caller never decodes the token itself
-		const user = await this.userService.findOne({ id: session.user })
+		// Step 2: return the session's user (including role) - the caller never decodes the token itself;
+		// already authenticated via the access token, so this internal read skips User's own session check
+		const user = await this.userService.findOne({ id: session.user, skipAuthCheck: true })
 
 		return { user }
 	}

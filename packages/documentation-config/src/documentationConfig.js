@@ -61,6 +61,11 @@ class DocumentationConfig {
 							type: 'apiKey',
 							in: 'cookie',
 							name: 'st'
+						},
+						bearerAuth: {
+							type: 'http',
+							scheme: 'bearer',
+							description: 'Opaque access token issued by POST /auth/login (or rotated by POST /auth/refresh), sent as "Authorization: Bearer <token>".'
 						}
 					}
 				}

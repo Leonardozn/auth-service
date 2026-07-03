@@ -1,6 +1,6 @@
 'use strict'
 
-// Test-only stub for @auth-service/email-resend - prevents forgot-password's Resend call from
+// Test-only stub for @auth-service/email-manager - prevents forgot-password's Resend call from
 // ever hitting the real network during tests. Loaded via `node --require` (e2e/smoke/crud,
 // spawned as a subprocess) or required directly at the top of a unit test file (same-process),
 // exactly like mock-repository-preload.js. MOCK_EMAIL_CAPTURE_FILE lets a test inspect what
@@ -11,11 +11,11 @@ const fs = require('node:fs')
 
 const CAPTURE_FILE = process.env.MOCK_EMAIL_CAPTURE_FILE || ''
 
-class MockEmailResend {
+class MockEmailManager {
 	static instance
 
 	static getInstance() {
-		if (!this.instance) this.instance = new MockEmailResend()
+		if (!this.instance) this.instance = new MockEmailManager()
 		return this.instance
 	}
 
@@ -29,8 +29,8 @@ class MockEmailResend {
 
 const originalLoad = Module._load
 Module._load = function (request, parent, isMain) {
-	if (request === '@auth-service/email-resend') return MockEmailResend
+	if (request === '@auth-service/email-manager') return MockEmailManager
 	return originalLoad.apply(this, arguments)
 }
 
-module.exports = MockEmailResend
+module.exports = MockEmailManager

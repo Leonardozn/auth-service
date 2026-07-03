@@ -19,11 +19,31 @@ function seededEnv() {
 	}
 }
 
-test('role routes — POST creates a record', async () => {
-	const app = await runApp()
+function futureDate(days = 1) {
+	return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
+}
+
+// Role is a platform-wide RBAC primitive - every mutation on it is admin-only, unconditionally.
+// Seeds a ready-to-use admin (role + user + session) so tests can authenticate as one.
+const ADMIN_ROLE_ID = '64b0c0ffee1234567890adcd'
+const ADMIN_ID = '64b0c0ffee1234567890adce'
+const ADMIN_TOKEN = 'admin-access-token'
+
+function adminSeedEnv() {
+	return {
+		MOCK_SEED_RECORDS: JSON.stringify([
+			{ schema: 'role', id: ADMIN_ROLE_ID, record: { name: 'admin', active: true } },
+			{ schema: 'user', id: ADMIN_ID, record: { name: 'Root', email: 'root@example.com', password: 'hash', role: ADMIN_ROLE_ID, active: true } },
+			{ schema: 'session', id: '64b0c0ffee1234567890adcf', record: { user: ADMIN_ID, accessToken: ADMIN_TOKEN, accessTokenExpiresAt: futureDate(), refreshToken: 'admin-refresh-token', refreshTokenExpiresAt: futureDate(5) } }
+		])
+	}
+}
+
+test('role routes — POST creates a record, as an admin', async () => {
+	const app = await runApp(adminSeedEnv())
 
 	try {
-		const res = await app.request('POST', `${app.path}/role`, SAMPLE)
+		const res = await app.request('POST', `${app.path}/role`, SAMPLE, { Authorization: `Bearer ${ADMIN_TOKEN}` })
 
 		assert.equal(res.status, 200)
 		assert.equal(res.body.success, true)
@@ -33,11 +53,23 @@ test('role routes — POST creates a record', async () => {
 	}
 })
 
-test('role routes — GET by id returns the seeded record', async () => {
-	const app = await runApp(seededEnv())
+test('role routes — POST rejects a missing Authorization header', async () => {
+	const app = await runApp()
 
 	try {
-		const res = await app.request('GET', `${app.path}/role/${SEED_ID}`)
+		const res = await app.request('POST', `${app.path}/role`, SAMPLE)
+
+		assert.equal(res.status, 401)
+	} finally {
+		await app.stop()
+	}
+})
+
+test('role routes — GET by id returns the seeded record, for any authenticated session', async () => {
+	const app = await runApp({ ...seededEnv(), ...adminSeedEnv() })
+
+	try {
+		const res = await app.request('GET', `${app.path}/role/${SEED_ID}`, undefined, { Authorization: `Bearer ${ADMIN_TOKEN}` })
 
 		assert.equal(res.status, 200)
 		assert.deepEqual(res.body.content, SAMPLE)
@@ -46,11 +78,23 @@ test('role routes — GET by id returns the seeded record', async () => {
 	}
 })
 
-test('role routes — GET by id returns 400 when the record does not exist', async () => {
-	const app = await runApp()
+test('role routes — GET by id rejects a missing Authorization header', async () => {
+	const app = await runApp(seededEnv())
 
 	try {
 		const res = await app.request('GET', `${app.path}/role/${SEED_ID}`)
+
+		assert.equal(res.status, 401)
+	} finally {
+		await app.stop()
+	}
+})
+
+test('role routes — GET by id returns 400 when the record does not exist', async () => {
+	const app = await runApp(adminSeedEnv())
+
+	try {
+		const res = await app.request('GET', `${app.path}/role/${SEED_ID}`, undefined, { Authorization: `Bearer ${ADMIN_TOKEN}` })
 
 		assert.equal(res.status, 400)
 		assert.equal(res.body.success, false)
@@ -59,26 +103,64 @@ test('role routes — GET by id returns 400 when the record does not exist', asy
 	}
 })
 
-test('role routes — GET list returns the envelope shape', async () => {
+test('role routes — GET list returns the envelope shape, for any authenticated session', async () => {
+	const app = await runApp({ ...seededEnv(), ...adminSeedEnv() })
+
+	try {
+		const res = await app.request('GET', `${app.path}/role`, undefined, { Authorization: `Bearer ${ADMIN_TOKEN}` })
+
+		assert.equal(res.status, 200)
+		// +1 for the seeded admin's own role, alongside the SEED_ID record.
+		assert.equal(res.body.content.count, 2)
+		assert.ok(res.body.content.records.some(r => r.name === SAMPLE.name && r.active === SAMPLE.active))
+	} finally {
+		await app.stop()
+	}
+})
+
+test('role routes — GET list rejects a missing Authorization header', async () => {
 	const app = await runApp(seededEnv())
 
 	try {
 		const res = await app.request('GET', `${app.path}/role`)
 
-		assert.equal(res.status, 200)
-		assert.equal(res.body.content.count, 1)
-		assert.deepEqual(res.body.content.records, [SAMPLE])
+		assert.equal(res.status, 401)
 	} finally {
 		await app.stop()
 	}
 })
 
-test('role routes — PATCH updates the seeded record', async () => {
+test('role routes — PATCH updates the seeded record, as an admin', async () => {
+	const app = await runApp({ ...seededEnv(), ...adminSeedEnv() })
+
+	try {
+		const res = await app.request('PATCH', `${app.path}/role/${SEED_ID}`, SAMPLE, { Authorization: `Bearer ${ADMIN_TOKEN}` })
+
+		assert.equal(res.status, 200)
+		assert.deepEqual(res.body.content, SAMPLE)
+	} finally {
+		await app.stop()
+	}
+})
+
+test('role routes — PATCH rejects a missing Authorization header', async () => {
 	const app = await runApp(seededEnv())
 
 	try {
 		const res = await app.request('PATCH', `${app.path}/role/${SEED_ID}`, SAMPLE)
 
+		assert.equal(res.status, 401)
+	} finally {
+		await app.stop()
+	}
+})
+
+test('role routes — PUT replaces the seeded record, as an admin', async () => {
+	const app = await runApp({ ...seededEnv(), ...adminSeedEnv() })
+
+	try {
+		const res = await app.request('PUT', `${app.path}/role/${SEED_ID}`, SAMPLE, { Authorization: `Bearer ${ADMIN_TOKEN}` })
+
 		assert.equal(res.status, 200)
 		assert.deepEqual(res.body.content, SAMPLE)
 	} finally {
@@ -86,28 +168,39 @@ test('role routes — PATCH updates the seeded record', async () => {
 	}
 })
 
-test('role routes — PUT replaces the seeded record', async () => {
+test('role routes — PUT rejects a missing Authorization header', async () => {
 	const app = await runApp(seededEnv())
 
 	try {
 		const res = await app.request('PUT', `${app.path}/role/${SEED_ID}`, SAMPLE)
 
-		assert.equal(res.status, 200)
-		assert.deepEqual(res.body.content, SAMPLE)
+		assert.equal(res.status, 401)
 	} finally {
 		await app.stop()
 	}
 })
 
-test('role routes — DELETE removes the seeded record', async () => {
+test('role routes — DELETE removes the seeded record, as an admin', async () => {
+	const app = await runApp({ ...seededEnv(), ...adminSeedEnv() })
+
+	try {
+		const del = await app.request('DELETE', `${app.path}/role/${SEED_ID}`, undefined, { Authorization: `Bearer ${ADMIN_TOKEN}` })
+		assert.equal(del.status, 200)
+
+		const after = await app.request('GET', `${app.path}/role/${SEED_ID}`, undefined, { Authorization: `Bearer ${ADMIN_TOKEN}` })
+		assert.equal(after.status, 400)
+	} finally {
+		await app.stop()
+	}
+})
+
+test('role routes — DELETE rejects a missing Authorization header', async () => {
 	const app = await runApp(seededEnv())
 
 	try {
-		const del = await app.request('DELETE', `${app.path}/role/${SEED_ID}`)
-		assert.equal(del.status, 200)
+		const res = await app.request('DELETE', `${app.path}/role/${SEED_ID}`)
 
-		const after = await app.request('GET', `${app.path}/role/${SEED_ID}`)
-		assert.equal(after.status, 400)
+		assert.equal(res.status, 401)
 	} finally {
 		await app.stop()
 	}

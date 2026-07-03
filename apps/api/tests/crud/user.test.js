@@ -29,11 +29,32 @@ const RECORDS = [
 		}
 	]
 
+function futureDate(days = 1) {
+	return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
+}
+
+// Assigning a `role` through POST /user is admin-only - seeds a ready-to-use admin
+// (role + user + session) so every record in RECORDS can be created through the real endpoint.
+const ADMIN_ROLE_ID = '64b0c0ffee1234567890adcd'
+const ADMIN_ID = '64b0c0ffee1234567890adce'
+const ADMIN_TOKEN = 'admin-access-token'
+const ADMIN_HEADERS = { Authorization: `Bearer ${ADMIN_TOKEN}` }
+
+function adminSeedEnv() {
+	return {
+		MOCK_SEED_RECORDS: JSON.stringify([
+			{ schema: 'role', id: ADMIN_ROLE_ID, record: { name: 'admin', active: true } },
+			{ schema: 'user', id: ADMIN_ID, record: { name: 'Root', email: 'root@example.com', password: 'hash', role: ADMIN_ROLE_ID, active: true } },
+			{ schema: 'session', id: '64b0c0ffee1234567890adcf', record: { user: ADMIN_ID, accessToken: ADMIN_TOKEN, accessTokenExpiresAt: futureDate(), refreshToken: 'admin-refresh-token', refreshTokenExpiresAt: futureDate(5) } }
+		])
+	}
+}
+
 test('user create — complete payload round-trips through the full envelope', async () => {
-	const app = await runApp()
+	const app = await runApp(adminSeedEnv())
 
 	try {
-		const res = await app.request('POST', `${app.path}/user`, RECORDS[0])
+		const res = await app.request('POST', `${app.path}/user`, RECORDS[0], ADMIN_HEADERS)
 
 		assert.equal(res.status, 200)
 		assert.equal(typeof res.body.content._id, 'string')
@@ -50,30 +71,31 @@ test('user create — complete payload round-trips through the full envelope', a
 })
 
 test('user list — count reflects every created record', async () => {
-	const app = await runApp()
+	const app = await runApp(adminSeedEnv())
 
 	try {
-		for (const record of RECORDS) await app.request('POST', `${app.path}/user`, record)
+		for (const record of RECORDS) await app.request('POST', `${app.path}/user`, record, ADMIN_HEADERS)
 
-		const res = await app.request('GET', `${app.path}/user`)
+		const res = await app.request('GET', `${app.path}/user`, undefined, ADMIN_HEADERS)
 
 		assert.equal(res.status, 200)
-		assert.equal(res.body.content.count, RECORDS.length)
+		// +1 for the seeded admin itself.
+		assert.equal(res.body.content.count, RECORDS.length + 1)
 	} finally {
 		await app.stop()
 	}
 })
 
 test('user list — pagination slices the result set', async () => {
-	const app = await runApp()
+	const app = await runApp(adminSeedEnv())
 
 	try {
-		for (const record of RECORDS) await app.request('POST', `${app.path}/user`, record)
+		for (const record of RECORDS) await app.request('POST', `${app.path}/user`, record, ADMIN_HEADERS)
 
-		const res = await app.request('GET', `${app.path}/user?size=2&page=1`)
+		const res = await app.request('GET', `${app.path}/user?size=2&page=1`, undefined, ADMIN_HEADERS)
 
 		assert.equal(res.status, 200)
-		assert.equal(res.body.content.count, RECORDS.length)
+		assert.equal(res.body.content.count, RECORDS.length + 1)
 		assert.equal(res.body.content.records.length, 2)
 	} finally {
 		await app.stop()
@@ -81,12 +103,12 @@ test('user list — pagination slices the result set', async () => {
 })
 
 test('user list — equality filter on name (FR-G8)', async () => {
-	const app = await runApp()
+	const app = await runApp(adminSeedEnv())
 
 	try {
-		for (const record of RECORDS) await app.request('POST', `${app.path}/user`, record)
+		for (const record of RECORDS) await app.request('POST', `${app.path}/user`, record, ADMIN_HEADERS)
 
-		const res = await app.request('GET', `${app.path}/user?query[name]=${RECORDS[1].name}`)
+		const res = await app.request('GET', `${app.path}/user?query[name]=${RECORDS[1].name}`, undefined, ADMIN_HEADERS)
 
 		assert.equal(res.status, 200)
 		assert.equal(res.body.content.count, 1)
@@ -97,18 +119,18 @@ test('user list — equality filter on name (FR-G8)', async () => {
 })
 
 test('user list — sort by name (FR-G8)', async () => {
-	const app = await runApp()
+	const app = await runApp(adminSeedEnv())
 
 	try {
-		for (const record of RECORDS) await app.request('POST', `${app.path}/user`, record)
+		for (const record of RECORDS) await app.request('POST', `${app.path}/user`, record, ADMIN_HEADERS)
 
-		const res = await app.request('GET', `${app.path}/user?sort[name]=-1`)
+		const res = await app.request('GET', `${app.path}/user?sort[name]=-1`, undefined, ADMIN_HEADERS)
 
 		assert.equal(res.status, 200)
-		const values = res.body.content.records.map(r => r.name)
-		assert.deepEqual(values, [...RECORDS].map(r => r.name).sort().reverse())
+		const names = res.body.content.records.map(r => r.name)
+		// The seeded admin ("Root") sorts last in descending order alongside item-1..3.
+		assert.deepEqual(names, [...RECORDS.map(r => r.name), 'Root'].sort().reverse())
 	} finally {
 		await app.stop()
 	}
 })
-

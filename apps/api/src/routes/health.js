@@ -1,5 +1,23 @@
 const HealthController = require('../controllers/health')
 
+/**
+ * @openapi
+ * tags:
+ *   - name: Health
+ *     description: Liveness check.
+ *
+ * /health:
+ *   get:
+ *     tags: [Health]
+ *     summary: Liveness check
+ *     description: Always returns 200 with a static payload - used by deployment/orchestration tooling and the e2e test harness to know the server has finished booting.
+ *     responses:
+ *       200:
+ *         description: Server is up
+ *         content:
+ *           application/json:
+ *             example: { success: true, message: "Success!", statusCode: 200, content: { data: "Ok" } }
+ */
 class HealthRouter {
 	/**
 	 * @private
