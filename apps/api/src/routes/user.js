@@ -5,23 +5,24 @@ const UserController = require('../controllers/user')
  * tags:
  *   - name: User
  *     description: |
- *       User account records. `POST`/`PUT` create/replace a user directly and accept every
- *       field, including `role` - assigning a `role` through either of them requires an
- *       authenticated admin session, to prevent a caller from self-escalating privileges.
- *       Self-service registration goes through `POST /auth/register` instead (always assigns
- *       the default "user" role, no admin needed). `PATCH` is wired to account management
- *       (edit own profile, or an admin editing anyone) and never accepts `role` or `password`.
+ *       User account records. Every route requires `Authorization: Bearer <access token>`
+ *       except self-service registration (`POST /auth/register`, which always assigns the
+ *       default "user" role, no admin needed). `POST`/`PUT` create/replace a user directly and
+ *       accept every field, including `role` - assigning a `role` through either of them
+ *       additionally requires an admin session, to prevent a caller from self-escalating
+ *       privileges. `DELETE` is admin-only. `GET` (list/findOne) only requires being
+ *       authenticated, any role. `PATCH` is wired to account management (edit own profile, or
+ *       an admin editing anyone) and never accepts `role` or `password`.
  *
  * /user:
  *   post:
  *     tags: [User]
  *     summary: Create a user
  *     description: |
- *       Every field is optional at the schema level. Omitting `role` creates the record with
- *       no role and needs no authentication. Including `role` requires
- *       `Authorization: Bearer <admin access token>` - the caller's session must belong to a
- *       user whose Role is named "admin", otherwise the request is rejected before the record
- *       is created.
+ *       Requires `Authorization: Bearer <access token>` - every field is otherwise optional at
+ *       the schema level. Including `role` additionally requires the caller's session to belong
+ *       to a user whose Role is named "admin", otherwise the request is rejected before the
+ *       record is created.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -52,7 +53,7 @@ const UserController = require('../controllers/user')
  *           application/json:
  *             example: { success: false, message: "Invalid input", statusCode: 400, content: { code: "invalid_type", expected: "string", received: "number", path: ["name"], message: "Expected string, received number" } }
  *       401:
- *         description: A `role` was submitted but the Authorization header is missing or malformed.
+ *         description: Missing or malformed Authorization header, or the access token is invalid/expired
  *         content:
  *           application/json:
  *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
@@ -68,6 +69,7 @@ const UserController = require('../controllers/user')
  *     tags: [User]
  *     summary: List users
  *     description: |
+ *       Requires `Authorization: Bearer <access token>` - any authenticated role can list users.
  *       Paginated list with filtering, operators, sorting and pagination.
  *         - Equality filter:  `query[field]=value`            (e.g. query[name]=Ada)
  *         - Operator filter:  `query[field][operator]=value`  (e.g. query[active][eq]=true)
@@ -75,6 +77,8 @@ const UserController = require('../controllers/user')
  *       gt/gte/lt/lte: number|date|datetime; between/notBetween: number|date|datetime (two values);
  *       or: combines conditions. `gt/gte/lt/lte/between/notBetween` are not valid on `name`/`email`/`role`
  *       (string/objectId fields) and return the 400 shown below.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: query[field]
@@ -111,6 +115,11 @@ const UserController = require('../controllers/user')
  *         content:
  *           application/json:
  *             example: { success: false, message: "Unrecognized key(s) in object: 'gte'", statusCode: 400, content: { code: "unrecognized_keys", keys: ["gte"], path: ["name"], message: "Unrecognized key(s) in object: 'gte'" } }
+ *       401:
+ *         description: Missing or malformed Authorization header, or the access token is invalid/expired
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
@@ -119,6 +128,10 @@ const UserController = require('../controllers/user')
  *   get:
  *     tags: [User]
  *     summary: Get a user by id
+ *     description: |
+ *       Requires `Authorization: Bearer <access token>` - any authenticated role can read a user.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -140,6 +153,11 @@ const UserController = require('../controllers/user')
  *         content:
  *           application/json:
  *             example: { success: false, message: "User not found.", statusCode: 400, content: null }
+ *       401:
+ *         description: Missing or malformed Authorization header, or the access token is invalid/expired
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
@@ -147,9 +165,9 @@ const UserController = require('../controllers/user')
  *     tags: [User]
  *     summary: Replace a user
  *     description: |
- *       Full replace - fields omitted from the body are cleared, not left untouched. Just like
- *       `POST /user`, including `role` in the body requires an admin session
- *       (`Authorization: Bearer <admin access token>`); omitting it needs no authentication.
+ *       Full replace - fields omitted from the body are cleared, not left untouched. Requires
+ *       `Authorization: Bearer <access token>`. Just like `POST /user`, additionally including
+ *       `role` in the body requires an admin session.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -253,6 +271,10 @@ const UserController = require('../controllers/user')
  *   delete:
  *     tags: [User]
  *     summary: Delete a user
+ *     description: |
+ *       Requires `Authorization: Bearer <admin access token>` - deleting a user outright is admin-only.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -270,6 +292,16 @@ const UserController = require('../controllers/user')
  *         content:
  *           application/json:
  *             example: { success: false, message: "User not found.", statusCode: 400, content: null }
+ *       401:
+ *         description: Missing or malformed Authorization header, or the access token is invalid/expired
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
+ *       403:
+ *         description: The caller's session does not belong to an admin
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Not authorized to perform this action.", statusCode: 403, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }

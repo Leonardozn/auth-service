@@ -53,7 +53,7 @@ class RoleController {
 	
 	async findOne(req, res) {
 		try {
-			const role = await this.roleService.findOne({ id: req.params.id, query: req.query })
+			const role = await this.roleService.findOne({ id: req.params.id, query: req.query, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(role)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -67,7 +67,7 @@ class RoleController {
 	
 	async list(req, res) {
 		try {
-			const role_list = await this.roleService.list({ query: req.query })
+			const role_list = await this.roleService.list({ query: req.query, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(role_list)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)

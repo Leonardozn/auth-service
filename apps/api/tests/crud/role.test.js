@@ -65,7 +65,7 @@ test('role list — count reflects every created record', async () => {
 	try {
 		for (const record of RECORDS) await app.request('POST', `${app.path}/role`, record, ADMIN_HEADERS)
 
-		const res = await app.request('GET', `${app.path}/role`)
+		const res = await app.request('GET', `${app.path}/role`, undefined, ADMIN_HEADERS)
 
 		assert.equal(res.status, 200)
 		// +1 for the seeded admin role itself.
@@ -81,7 +81,7 @@ test('role list — pagination slices the result set', async () => {
 	try {
 		for (const record of RECORDS) await app.request('POST', `${app.path}/role`, record, ADMIN_HEADERS)
 
-		const res = await app.request('GET', `${app.path}/role?size=2&page=1`)
+		const res = await app.request('GET', `${app.path}/role?size=2&page=1`, undefined, ADMIN_HEADERS)
 
 		assert.equal(res.status, 200)
 		assert.equal(res.body.content.count, RECORDS.length + 1)
@@ -97,7 +97,7 @@ test('role list — equality filter on name (FR-G8)', async () => {
 	try {
 		for (const record of RECORDS) await app.request('POST', `${app.path}/role`, record, ADMIN_HEADERS)
 
-		const res = await app.request('GET', `${app.path}/role?query[name]=${RECORDS[1].name}`)
+		const res = await app.request('GET', `${app.path}/role?query[name]=${RECORDS[1].name}`, undefined, ADMIN_HEADERS)
 
 		assert.equal(res.status, 200)
 		assert.equal(res.body.content.count, 1)
@@ -113,7 +113,7 @@ test('role list — sort by name (FR-G8)', async () => {
 	try {
 		for (const record of RECORDS) await app.request('POST', `${app.path}/role`, record, ADMIN_HEADERS)
 
-		const res = await app.request('GET', `${app.path}/role?sort[name]=-1`)
+		const res = await app.request('GET', `${app.path}/role?sort[name]=-1`, undefined, ADMIN_HEADERS)
 
 		assert.equal(res.status, 200)
 		const names = res.body.content.records.map(r => r.name)

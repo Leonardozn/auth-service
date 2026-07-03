@@ -6,13 +6,18 @@ const SessionController = require('../controllers/session')
  *   - name: Session
  *     description: |
  *       Raw Session records (opaque access/refresh token pairs). Sessions are normally created
- *       by `POST /auth/login` and consumed via `POST /auth/validate`/`POST /auth/refresh` - this
- *       is the generic model CRUD, unauthenticated like the rest of the raw model endpoints.
+ *       by `POST /auth/login` and consumed via `POST /auth/validate`/`POST /auth/refresh` -
+ *       Session is an internal identity record, so every raw CRUD operation on it here is
+ *       admin-only, unconditionally.
  *
  * /session:
  *   post:
  *     tags: [Session]
  *     summary: Create a session
+ *     description: |
+ *       Requires `Authorization: Bearer <admin access token>`.
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -40,6 +45,16 @@ const SessionController = require('../controllers/session')
  *         content:
  *           application/json:
  *             example: { success: false, message: "Invalid datetime", statusCode: 400, content: { code: "invalid_string", validation: "datetime", message: "Invalid datetime", path: ["accessTokenExpiresAt"] } }
+ *       401:
+ *         description: Missing or malformed Authorization header
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
+ *       403:
+ *         description: The caller's session does not belong to an admin
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Not authorized to perform this action.", statusCode: 403, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
@@ -47,12 +62,15 @@ const SessionController = require('../controllers/session')
  *     tags: [Session]
  *     summary: List sessions
  *     description: |
+ *       Requires `Authorization: Bearer <admin access token>`.
  *       Paginated list with filtering, operators, sorting and pagination.
  *         - Equality filter:  `query[field]=value`            (e.g. query[user]=64b0c0ffee1234567890abcd)
  *         - Operator filter:  `query[field][operator]=value`  (e.g. query[accessTokenExpiresAt][gte]=2024-01-01T00:00:00.000Z)
  *       Operators by type — eq/ne/in/notIn: any; like/notLike: string;
  *       gt/gte/lt/lte: number|date|datetime; between/notBetween: number|date|datetime (two values);
  *       or: combines conditions.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: query[field]
@@ -89,6 +107,11 @@ const SessionController = require('../controllers/session')
  *         content:
  *           application/json:
  *             example: { success: false, message: "Unrecognized key(s) in object: 'gte'", statusCode: 400, content: { code: "unrecognized_keys", keys: ["gte"], path: ["accessToken"], message: "Unrecognized key(s) in object: 'gte'" } }
+ *       401:
+ *         description: Missing or malformed Authorization header
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
@@ -97,6 +120,10 @@ const SessionController = require('../controllers/session')
  *   get:
  *     tags: [Session]
  *     summary: Get a session by id
+ *     description: |
+ *       Requires `Authorization: Bearer <admin access token>`.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -118,13 +145,22 @@ const SessionController = require('../controllers/session')
  *         content:
  *           application/json:
  *             example: { success: false, message: "Session not found.", statusCode: 400, content: null }
+ *       401:
+ *         description: Missing or malformed Authorization header
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
  *   put:
  *     tags: [Session]
  *     summary: Replace a session
- *     description: Full replace - fields omitted from the body are cleared, not left untouched.
+ *     description: |
+ *       Requires `Authorization: Bearer <admin access token>`. Full replace - fields omitted
+ *       from the body are cleared, not left untouched.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -155,13 +191,21 @@ const SessionController = require('../controllers/session')
  *         content:
  *           application/json:
  *             example: { success: false, message: "Session not found.", statusCode: 400, content: null }
+ *       401:
+ *         description: Missing or malformed Authorization header
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
  *   patch:
  *     tags: [Session]
  *     summary: Update a session
- *     description: Partial update.
+ *     description: |
+ *       Requires `Authorization: Bearer <admin access token>`. Partial update.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -192,12 +236,21 @@ const SessionController = require('../controllers/session')
  *         content:
  *           application/json:
  *             example: { success: false, message: "Session not found.", statusCode: 400, content: null }
+ *       401:
+ *         description: Missing or malformed Authorization header
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
  *   delete:
  *     tags: [Session]
  *     summary: Delete a session
+ *     description: |
+ *       Requires `Authorization: Bearer <admin access token>`.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -215,6 +268,11 @@ const SessionController = require('../controllers/session')
  *         content:
  *           application/json:
  *             example: { success: false, message: "Session not found.", statusCode: 400, content: null }
+ *       401:
+ *         description: Missing or malformed Authorization header
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }

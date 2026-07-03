@@ -7,7 +7,8 @@ const RoleController = require('../controllers/role')
  *     description: |
  *       Platform-wide RBAC roles (e.g. "user", "admin"). Every mutation (create, replace,
  *       update, delete) requires an authenticated admin session, unconditionally - there is no
- *       self-service or ownership concept for a Role. Reading (`GET`) is unrestricted.
+ *       self-service or ownership concept for a Role. Reading (`GET`) only requires being
+ *       authenticated, any role.
  *
  * /role:
  *   post:
@@ -59,14 +60,16 @@ const RoleController = require('../controllers/role')
  *     tags: [Role]
  *     summary: List roles
  *     description: |
- *       Paginated list with filtering, operators, sorting and pagination. Unauthenticated - the
- *       set of role names is not sensitive.
+ *       Requires `Authorization: Bearer <access token>` - any authenticated role can list roles.
+ *       Paginated list with filtering, operators, sorting and pagination.
  *         - Equality filter:  `query[field]=value`            (e.g. query[name]=admin)
  *         - Operator filter:  `query[field][operator]=value`  (e.g. query[active][eq]=true)
  *       Operators by type — eq/ne/in/notIn: any; like/notLike: string;
  *       gt/gte/lt/lte: number|date|datetime; between/notBetween: number|date|datetime (two values);
  *       or: combines conditions. `gt/gte/lt/lte/between/notBetween` are not valid on `name`
  *       (a string field) and return the 400 shown below.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: query[field]
@@ -99,6 +102,11 @@ const RoleController = require('../controllers/role')
  *         content:
  *           application/json:
  *             example: { success: false, message: "Unrecognized key(s) in object: 'gte'", statusCode: 400, content: { code: "unrecognized_keys", keys: ["gte"], path: ["name"], message: "Unrecognized key(s) in object: 'gte'" } }
+ *       401:
+ *         description: Missing or malformed Authorization header, or the access token is invalid/expired
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
@@ -107,7 +115,10 @@ const RoleController = require('../controllers/role')
  *   get:
  *     tags: [Role]
  *     summary: Get a role by id
- *     description: Unauthenticated - the set of role names is not sensitive.
+ *     description: |
+ *       Requires `Authorization: Bearer <access token>` - any authenticated role can read a role.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -125,6 +136,11 @@ const RoleController = require('../controllers/role')
  *         content:
  *           application/json:
  *             example: { success: false, message: "Role not found.", statusCode: 400, content: null }
+ *       401:
+ *         description: Missing or malformed Authorization header, or the access token is invalid/expired
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }

@@ -124,7 +124,12 @@ class RoleService {
 	}
 	
 	async findOne(config = {}) {
-		const { id } = config
+		const { id, authorizationHeader, skipAuthCheck = false } = config
+
+		// 1. Reading role records requires an authenticated session - skipped for internal reuse
+		// (update/replace/remove re-reading the record they already authenticated for)
+		if (!skipAuthCheck) await this._requireAuthenticatedSession(authorizationHeader)
+
 		let virtuals = {}
 		let relations = {}
 		const query = this.roleInterface.getQueryInterface().parse({ _id: id, ...config.query?.query })
@@ -140,6 +145,9 @@ class RoleService {
 	}
 	
 	async list(config = {}) {
+		// 1. Reading role records requires an authenticated session
+		await this._requireAuthenticatedSession(config.authorizationHeader)
+
 		let query = {}
 		let virtuals = {}
 		let relations = {}
@@ -163,7 +171,7 @@ class RoleService {
 		await this._requireAdminSession(authorizationHeader)
 
 		const data = this._unflatten(body)
-		const existingRole = await this.findOne({ id })
+		const existingRole = await this.findOne({ id, skipAuthCheck: true })
 		const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
 
 		// 2. Initial update with JSON data
@@ -244,7 +252,7 @@ class RoleService {
 		await this._requireAdminSession(authorizationHeader)
 
 		const data = this._unflatten(body)
-		const existingRole = await this.findOne({ id })
+		const existingRole = await this.findOne({ id, skipAuthCheck: true })
 		const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
 
 		// 2. Initial replace with JSON data
@@ -324,7 +332,7 @@ class RoleService {
 		// 1. Roles are a platform-wide RBAC primitive - only an admin may delete one
 		await this._requireAdminSession(authorizationHeader)
 
-		const existingRole = await this.findOne({ id })
+		const existingRole = await this.findOne({ id, skipAuthCheck: true })
 
 		const existingObj = existingRole.toObject ? existingRole.toObject() : existingRole
 		const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
@@ -365,6 +373,19 @@ class RoleService {
 			token
 		})
 		await this.requireAdminUser.execute({ repository: this.repository, userId: session.user })
+	}
+
+	// Authenticates the caller from the access token, without requiring any particular role -
+	// used to gate raw model endpoints (Role) that must stay off-limits to anonymous callers.
+	async _requireAuthenticatedSession(authorizationHeader) {
+		const token = this.extractBearerToken.execute({ authorizationHeader })
+		return this.findSessionByToken.execute({
+			repository: this.repository,
+			luxon: this.luxon,
+			tokenField: 'accessToken',
+			expiryField: 'accessTokenExpiresAt',
+			token
+		})
 	}
 
 	applayContract(payload) {

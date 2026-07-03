@@ -6,13 +6,18 @@ const Password_reset_tokenController = require('../controllers/password_reset_to
  *   - name: PasswordResetToken
  *     description: |
  *       Raw PasswordResetToken records (single-use recovery tokens). Normally created by
- *       `POST /auth/forgot-password` and consumed via `POST /auth/reset-password` - this is the
- *       generic model CRUD, unauthenticated like the rest of the raw model endpoints.
+ *       `POST /auth/forgot-password` and consumed via `POST /auth/reset-password` -
+ *       PasswordResetToken is an internal recovery record, so every raw CRUD operation on it
+ *       here is admin-only, unconditionally.
  *
  * /password_reset_token:
  *   post:
  *     tags: [PasswordResetToken]
  *     summary: Create a password reset token
+ *     description: |
+ *       Requires `Authorization: Bearer <admin access token>`.
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -39,6 +44,16 @@ const Password_reset_tokenController = require('../controllers/password_reset_to
  *         content:
  *           application/json:
  *             example: { success: false, message: "Invalid input", statusCode: 400, content: { code: "invalid_type", expected: "boolean", received: "string", path: ["used"], message: "Expected boolean, received string" } }
+ *       401:
+ *         description: Missing or malformed Authorization header
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
+ *       403:
+ *         description: The caller's session does not belong to an admin
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Not authorized to perform this action.", statusCode: 403, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
@@ -46,12 +61,15 @@ const Password_reset_tokenController = require('../controllers/password_reset_to
  *     tags: [PasswordResetToken]
  *     summary: List password reset tokens
  *     description: |
+ *       Requires `Authorization: Bearer <admin access token>`.
  *       Paginated list with filtering, operators, sorting and pagination.
  *         - Equality filter:  `query[field]=value`            (e.g. query[used]=false)
  *         - Operator filter:  `query[field][operator]=value`  (e.g. query[expiresAt][gte]=2024-01-01T00:00:00.000Z)
  *       Operators by type — eq/ne/in/notIn: any; like/notLike: string;
  *       gt/gte/lt/lte: number|date|datetime; between/notBetween: number|date|datetime (two values);
  *       or: combines conditions.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: query[field]
@@ -88,6 +106,11 @@ const Password_reset_tokenController = require('../controllers/password_reset_to
  *         content:
  *           application/json:
  *             example: { success: false, message: "Unrecognized key(s) in object: 'gte'", statusCode: 400, content: { code: "unrecognized_keys", keys: ["gte"], path: ["token"], message: "Unrecognized key(s) in object: 'gte'" } }
+ *       401:
+ *         description: Missing or malformed Authorization header
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
@@ -96,6 +119,10 @@ const Password_reset_tokenController = require('../controllers/password_reset_to
  *   get:
  *     tags: [PasswordResetToken]
  *     summary: Get a password reset token by id
+ *     description: |
+ *       Requires `Authorization: Bearer <admin access token>`.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -117,13 +144,22 @@ const Password_reset_tokenController = require('../controllers/password_reset_to
  *         content:
  *           application/json:
  *             example: { success: false, message: "Password reset token not found.", statusCode: 400, content: null }
+ *       401:
+ *         description: Missing or malformed Authorization header
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
  *   put:
  *     tags: [PasswordResetToken]
  *     summary: Replace a password reset token
- *     description: Full replace - fields omitted from the body are cleared, not left untouched.
+ *     description: |
+ *       Requires `Authorization: Bearer <admin access token>`. Full replace - fields omitted
+ *       from the body are cleared, not left untouched.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -153,13 +189,21 @@ const Password_reset_tokenController = require('../controllers/password_reset_to
  *         content:
  *           application/json:
  *             example: { success: false, message: "Password reset token not found.", statusCode: 400, content: null }
+ *       401:
+ *         description: Missing or malformed Authorization header
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
  *   patch:
  *     tags: [PasswordResetToken]
  *     summary: Update a password reset token
- *     description: Partial update.
+ *     description: |
+ *       Requires `Authorization: Bearer <admin access token>`. Partial update.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -189,12 +233,21 @@ const Password_reset_tokenController = require('../controllers/password_reset_to
  *         content:
  *           application/json:
  *             example: { success: false, message: "Password reset token not found.", statusCode: 400, content: null }
+ *       401:
+ *         description: Missing or malformed Authorization header
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
  *   delete:
  *     tags: [PasswordResetToken]
  *     summary: Delete a password reset token
+ *     description: |
+ *       Requires `Authorization: Bearer <admin access token>`.
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -212,6 +265,11 @@ const Password_reset_tokenController = require('../controllers/password_reset_to
  *         content:
  *           application/json:
  *             example: { success: false, message: "Password reset token not found.", statusCode: 400, content: null }
+ *       401:
+ *         description: Missing or malformed Authorization header
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }

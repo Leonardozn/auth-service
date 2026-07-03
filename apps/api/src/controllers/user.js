@@ -55,7 +55,7 @@ class UserController {
 	
 	async findOne(req, res) {
 		try {
-			const user = await this.userService.findOne({ id: req.params.id, query: req.query })
+			const user = await this.userService.findOne({ id: req.params.id, query: req.query, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(user)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -69,7 +69,7 @@ class UserController {
 	
 	async list(req, res) {
 		try {
-			const user_list = await this.userService.list({ query: req.query })
+			const user_list = await this.userService.list({ query: req.query, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(user_list)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -111,7 +111,7 @@ class UserController {
 	
 	async remove(req, res) {
 		try {
-			const user = await this.userService.remove({ id: req.params.id })
+			const user = await this.userService.remove({ id: req.params.id, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(user)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
