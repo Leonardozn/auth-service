@@ -138,3 +138,70 @@ test('AccountManagementService.forgotPassword() — still responds successfully 
 	const tokens = await repository.list('password_reset_token', { query: {} })
 	assert.equal(tokens.count, 1)
 })
+
+test('AccountManagementService.resetPassword() — updates the password, marks the token used, and revokes all sessions', async () => {
+	const repository = MockRepository.getInstance()
+	const { DateTime } = luxon
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'old-hash', role: '64b0c0ffee1234567890abcd' } })
+	const resetToken = await repository.add('password_reset_token', {
+		data: {
+			user: String(user._id),
+			token: 'valid-reset-token',
+			expiresAt: DateTime.now().setZone('utc').plus({ minutes: 30 }).toJSDate(),
+			used: false
+		}
+	})
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'active-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'active-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const service = AccountManagementService.getInstance()
+
+	const result = await service.resetPassword({ body: { token: 'valid-reset-token', newPassword: 'NewSecret!' } })
+
+	assert.equal(result, null)
+
+	const dataEncryptHandler = DataEncryptHandler.getInstance()
+	const updatedUser = await repository.list('user', { query: { _id: String(user._id) } })
+	assert.equal(dataEncryptHandler.verify('NewSecret!', updatedUser.records[0].password), true)
+
+	const updatedToken = await repository.list('password_reset_token', { query: { _id: resetToken._id } })
+	assert.equal(updatedToken.records[0].used, true)
+
+	const sessions = await repository.list('session', { query: {} })
+	assert.equal(sessions.count, 0)
+})
+
+test('AccountManagementService.resetPassword() — throws when the token does not exist', async () => {
+	const service = AccountManagementService.getInstance()
+
+	await assert.rejects(
+		() => service.resetPassword({ body: { token: 'missing-token', newPassword: 'NewSecret!' } }),
+		{ name: 'BadRequestError' }
+	)
+})
+
+test('AccountManagementService.resetPassword() — throws when the token was already used', async () => {
+	const repository = MockRepository.getInstance()
+	const { DateTime } = luxon
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'old-hash', role: '64b0c0ffee1234567890abcd' } })
+	await repository.add('password_reset_token', {
+		data: {
+			user: String(user._id),
+			token: 'used-reset-token',
+			expiresAt: DateTime.now().setZone('utc').plus({ minutes: 30 }).toJSDate(),
+			used: true
+		}
+	})
+	const service = AccountManagementService.getInstance()
+
+	await assert.rejects(
+		() => service.resetPassword({ body: { token: 'used-reset-token', newPassword: 'NewSecret!' } }),
+		{ name: 'BadRequestError' }
+	)
+})

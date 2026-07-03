@@ -15,6 +15,7 @@ const RevokeSessions = require('./commands/revokeSessions')
 const GenerateOpaqueToken = require('./commands/generateOpaqueToken')
 const ComputeExpiryDate = require('./commands/computeExpiryDate')
 const SendPasswordResetEmail = require('./commands/sendPasswordResetEmail')
+const FindValidPasswordResetToken = require('./commands/findValidPasswordResetToken')
 
 class AccountManagementService {
 	/**
@@ -40,6 +41,7 @@ class AccountManagementService {
 		this.generateOpaqueToken = GenerateOpaqueToken.getInstance()
 		this.computeExpiryDate = ComputeExpiryDate.getInstance()
 		this.sendPasswordResetEmail = SendPasswordResetEmail.getInstance()
+		this.findValidPasswordResetToken = FindValidPasswordResetToken.getInstance()
 	}
 
 	static getInstance() {
@@ -105,6 +107,25 @@ class AccountManagementService {
 				console.error('Failed to send password reset email:', error)
 			}
 		}
+
+		return null
+	}
+
+	async resetPassword(config = {}) {
+		const { token, newPassword } = this.accountInterface.getResetPasswordInterface().parse(config.body)
+
+		// Step 1: find a still-valid (unused, not expired) password reset token
+		const resetToken = await this.findValidPasswordResetToken.execute({ repository: this.repository, luxon: this.luxon, token })
+
+		// Step 2: hash and persist the new password
+		const hashedPassword = await this.hashPassword.execute({ dataEncryptHandler: this.dataEncryptHandler, password: newPassword })
+		await this.userService.update({ id: resetToken.user, body: { password: hashedPassword } })
+
+		// Step 3: mark the reset token as used - it is single-use
+		await this.repository.update('password_reset_token', { id: resetToken._id, data: { used: true } })
+
+		// Step 4: revoke every active session for this user (no exception - the caller isn't authenticated)
+		await this.revokeSessions.execute({ repository: this.repository, userId: resetToken.user })
 
 		return null
 	}

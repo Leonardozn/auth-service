@@ -25,6 +25,11 @@ class AccountManagementInterfaces {
 	/**
 	 * @private
 	 */
+	resetPasswordInterface
+
+	/**
+	 * @private
+	 */
 	types
 
 	constructor() {
@@ -39,6 +44,11 @@ class AccountManagementInterfaces {
 		this.forgotPasswordInterface = this.dataValidatorHandler.validate({
 			email: { type: this.types.string }
 		})
+
+		this.resetPasswordInterface = this.dataValidatorHandler.validate({
+			token: { type: this.types.string },
+			newPassword: { type: this.types.string }
+		})
 	}
 
 	static getInstance() {
@@ -52,6 +62,10 @@ class AccountManagementInterfaces {
 
 	getForgotPasswordInterface() {
 		return this.forgotPasswordInterface
+	}
+
+	getResetPasswordInterface() {
+		return this.resetPasswordInterface
 	}
 }
 
