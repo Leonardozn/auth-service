@@ -89,6 +89,30 @@ test('AuthenticationService.login() — throws when the password is wrong', asyn
 	)
 })
 
+test('AuthenticationService.login() — evicts the oldest session once the role\'s maxSessions is reached', async () => {
+	const repository = MockRepository.getInstance()
+	const dataEncryptHandler = DataEncryptHandler.getInstance()
+	const hashed = dataEncryptHandler.encrypt('Sup3rSecret!')
+	const role = await repository.add('role', { data: { name: 'user', active: true, maxSessions: 1 } })
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: hashed, role: String(role._id) } })
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'old-access-token',
+			accessTokenExpiresAt: luxon.DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'old-refresh-token',
+			refreshTokenExpiresAt: luxon.DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const service = AuthenticationService.getInstance()
+
+	const result = await service.login({ body: { email: 'ada@example.com', password: 'Sup3rSecret!' } })
+
+	const sessions = await repository.list('session', { query: {} })
+	assert.equal(sessions.count, 1)
+	assert.equal(sessions.records[0].accessToken, result.token)
+})
+
 test('AuthenticationService.login() — throws 403 when the account is deactivated', async () => {
 	const repository = MockRepository.getInstance()
 	const dataEncryptHandler = DataEncryptHandler.getInstance()

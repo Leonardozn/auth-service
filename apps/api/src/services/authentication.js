@@ -15,6 +15,7 @@ const ComputeExpiryDate = require('./commands/computeExpiryDate')
 const FindSessionByToken = require('./commands/findSessionByToken')
 const ExtractBearerToken = require('./commands/extractBearerToken')
 const RemoveSessionByToken = require('./commands/removeSessionByToken')
+const EnforceSessionLimit = require('./commands/enforceSessionLimit')
 
 class AuthenticationService {
 	/**
@@ -40,6 +41,7 @@ class AuthenticationService {
 		this.findSessionByToken = FindSessionByToken.getInstance()
 		this.extractBearerToken = ExtractBearerToken.getInstance()
 		this.removeSessionByToken = RemoveSessionByToken.getInstance()
+		this.enforceSessionLimit = EnforceSessionLimit.getInstance()
 	}
 
 	static getInstance() {
@@ -75,10 +77,16 @@ class AuthenticationService {
 		// Step 2: a deactivated account may not start a new session
 		if (user.active === false) throw new ForbiddenError('Account is deactivated.')
 
-		// Step 3: issue a fresh access/refresh token pair
+		// Step 3: evict the oldest session if the user's role has a configured session limit -
+		// userId must stay the raw ObjectId user._id already is (not stringified): repository.list()
+		// runs a Mongo aggregation, which never casts query values against the schema the way
+		// find()/save() do, so a string here would silently match zero sessions against a real DB.
+		await this.enforceSessionLimit.execute({ repository: this.repository, userId: user._id, roleId: user.role })
+
+		// Step 4: issue a fresh access/refresh token pair
 		const tokenPair = this.issueTokenPair.execute(this._tokenPairConfig())
 
-		// Step 4: persist a new session for this login
+		// Step 5: persist a new session for this login
 		await this.repository.add('session', { data: { user: String(user._id), ...tokenPair } })
 
 		return {
