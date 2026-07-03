@@ -150,7 +150,7 @@ const AuthController = require('../controllers/auth')
  *     summary: Log out and revoke the current session
  *     description: Idempotent - calling it twice (or after the session is already gone) still returns 200.
  *     security:
- *       - cookieAuth: []
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: Session revoked (or already gone)
@@ -172,7 +172,7 @@ const AuthController = require('../controllers/auth')
  *     summary: Change the caller's own password
  *     description: Revokes every other session for the account, keeping the current one alive.
  *     security:
- *       - cookieAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -267,7 +267,7 @@ const AuthController = require('../controllers/auth')
  *       uses `PATCH /user/{id}` with `{ active: false }` instead. Sets `User.active = false` and
  *       revokes every Session and PasswordResetToken for the account in one transaction.
  *     security:
- *       - cookieAuth: []
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: Account deactivated

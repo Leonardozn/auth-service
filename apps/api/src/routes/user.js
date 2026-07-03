@@ -23,7 +23,7 @@ const UserController = require('../controllers/user')
  *       user whose Role is named "admin", otherwise the request is rejected before the record
  *       is created.
  *     security:
- *       - cookieAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -151,7 +151,7 @@ const UserController = require('../controllers/user')
  *       `POST /user`, including `role` in the body requires an admin session
  *       (`Authorization: Bearer <admin access token>`); omitting it needs no authentication.
  *     security:
- *       - cookieAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -208,7 +208,7 @@ const UserController = require('../controllers/user')
  *       admin (self-deactivation goes through `POST /auth/deactivate` instead, which also
  *       revokes sessions).
  *     security:
- *       - cookieAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id

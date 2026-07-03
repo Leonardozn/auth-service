@@ -17,7 +17,7 @@ const RoleController = require('../controllers/role')
  *       Requires `Authorization: Bearer <admin access token>` - the caller's session must
  *       belong to a user whose Role is named "admin".
  *     security:
- *       - cookieAuth: []
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -135,7 +135,7 @@ const RoleController = require('../controllers/role')
  *       Full replace - fields omitted from the body are cleared, not left untouched. Requires
  *       `Authorization: Bearer <admin access token>`.
  *     security:
- *       - cookieAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -184,7 +184,7 @@ const RoleController = require('../controllers/role')
  *     description: |
  *       Partial update. Requires `Authorization: Bearer <admin access token>`.
  *     security:
- *       - cookieAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -233,7 +233,7 @@ const RoleController = require('../controllers/role')
  *     description: |
  *       Requires `Authorization: Bearer <admin access token>`.
  *     security:
- *       - cookieAuth: []
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
