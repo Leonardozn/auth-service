@@ -422,3 +422,67 @@ test('auth routes — POST /auth/forgot-password responds successfully even when
 		await app.stop()
 	}
 })
+
+test('auth routes — POST /auth/reset-password updates the password and revokes all sessions', async () => {
+	const app = await runApp(seededRoleEnv())
+
+	try {
+		await app.request('POST', `${app.path}/auth/register`, {
+			name: 'Ada',
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+		const loginRes = await app.request('POST', `${app.path}/auth/login`, {
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+		await app.request('POST', `${app.path}/auth/forgot-password`, { email: 'ada@example.com' })
+
+		const tokensRes = await app.request('GET', `${app.path}/password_reset_token`)
+		const resetToken = tokensRes.body.content.records[0].token
+
+		const resetRes = await app.request('POST', `${app.path}/auth/reset-password`, { token: resetToken, newPassword: 'NewSecret!' })
+
+		assert.equal(resetRes.status, 200)
+		assert.deepEqual(resetRes.body, {
+			success: true,
+			message: 'Success!',
+			statusCode: 200,
+			content: null
+		})
+
+		// the session that existed before the reset must be revoked
+		const validateRes = await app.request('POST', `${app.path}/auth/validate`, { token: loginRes.body.content.token })
+		assert.equal(validateRes.status, 401)
+
+		// old password no longer works, new one does
+		const oldLogin = await app.request('POST', `${app.path}/auth/login`, { email: 'ada@example.com', password: 'Sup3rSecret!' })
+		assert.equal(oldLogin.status, 401)
+		const newLogin = await app.request('POST', `${app.path}/auth/login`, { email: 'ada@example.com', password: 'NewSecret!' })
+		assert.equal(newLogin.status, 200)
+
+		// the token is single-use - reusing it must fail
+		const reuseRes = await app.request('POST', `${app.path}/auth/reset-password`, { token: resetToken, newPassword: 'AnotherSecret!' })
+		assert.equal(reuseRes.status, 400)
+	} finally {
+		await app.stop()
+	}
+})
+
+test('auth routes — POST /auth/reset-password rejects an invalid token', async () => {
+	const app = await runApp()
+
+	try {
+		const res = await app.request('POST', `${app.path}/auth/reset-password`, { token: 'not-a-real-token', newPassword: 'NewSecret!' })
+
+		assert.equal(res.status, 400)
+		assert.deepEqual(res.body, {
+			success: false,
+			message: 'Invalid or expired reset token.',
+			statusCode: 400,
+			content: null
+		})
+	} finally {
+		await app.stop()
+	}
+})

@@ -34,6 +34,7 @@ class AuthController {
 		this.logout = this.logout.bind(this)
 		this.changePassword = this.changePassword.bind(this)
 		this.forgotPassword = this.forgotPassword.bind(this)
+		this.resetPassword = this.resetPassword.bind(this)
 	}
 
 	static getInstance() {
@@ -128,6 +129,20 @@ class AuthController {
 	async forgotPassword(req, res) {
 		try {
 			const result = await this.accountManagementService.forgotPassword({ body: req.body })
+			const response = this.handleResponseHandler.buildResponse(result)
+
+			res.status(response[this.responseBody.STATUS]).json(response)
+		} catch (error) {
+			console.error(error)
+			const response = this.handleResponseHandler.buildResponse(error)
+
+			res.status(response[this.responseBody.STATUS]).json(response)
+		}
+	}
+
+	async resetPassword(req, res) {
+		try {
+			const result = await this.accountManagementService.resetPassword({ body: req.body })
 			const response = this.handleResponseHandler.buildResponse(result)
 
 			res.status(response[this.responseBody.STATUS]).json(response)

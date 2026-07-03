@@ -345,3 +345,54 @@ test('AuthController.forgotPassword — returns 200 with null content whether or
 		})
 	}
 })
+
+test('AuthController.resetPassword — returns 200 with null content on success', async () => {
+	const repository = MockRepository.getInstance()
+	const { DateTime } = luxon
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'old-hash', role: '64b0c0ffee1234567890abcd' } })
+	await repository.add('password_reset_token', {
+		data: {
+			user: String(user._id),
+			token: 'valid-reset-token',
+			expiresAt: DateTime.now().setZone('utc').plus({ minutes: 30 }).toJSDate(),
+			used: false
+		}
+	})
+	const controller = AuthController.getInstance()
+	const req = { body: { token: 'valid-reset-token', newPassword: 'NewSecret!' } }
+	let capturedStatus, capturedBody
+	const res = {
+		status(code) { capturedStatus = code; return this },
+		json(body)   { capturedBody  = body;  return this },
+	}
+
+	await controller.resetPassword(req, res)
+
+	assert.equal(capturedStatus, 200)
+	assert.deepEqual(capturedBody, {
+		success: true,
+		message: 'Success!',
+		statusCode: 200,
+		content: null
+	})
+})
+
+test('AuthController.resetPassword — returns 400 when the token is invalid', async () => {
+	const controller = AuthController.getInstance()
+	const req = { body: { token: 'missing-token', newPassword: 'NewSecret!' } }
+	let capturedStatus, capturedBody
+	const res = {
+		status(code) { capturedStatus = code; return this },
+		json(body)   { capturedBody  = body;  return this },
+	}
+
+	await controller.resetPassword(req, res)
+
+	assert.equal(capturedStatus, 400)
+	assert.deepEqual(capturedBody, {
+		success: false,
+		message: 'Invalid or expired reset token.',
+		statusCode: 400,
+		content: null
+	})
+})
