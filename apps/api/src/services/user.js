@@ -72,10 +72,14 @@ class UserService {
 		const { body, files = [], options = {}, authorizationHeader, trustedRoleAssignment = false } = config
 		const payload = Array.isArray(body) ? [...body] : { ...body }
 
-		// 1. Assigning a role is admin-only over HTTP - the one exception is AuthenticationService.register(),
-		// which resolves the default role itself (never from client input) and passes `trustedRoleAssignment`
-		const assignsRole = Array.isArray(payload) ? payload.some(item => item.role !== undefined) : payload.role !== undefined
-		if (assignsRole && !trustedRoleAssignment) await this._requireAdminSession(authorizationHeader)
+		// 1. Creating a user directly requires an authenticated session; assigning a role on top of
+		// that is admin-only. The one exception is AuthenticationService.register(), which resolves
+		// the default role itself (never from client input) and passes `trustedRoleAssignment`
+		if (!trustedRoleAssignment) {
+			const assignsRole = Array.isArray(payload) ? payload.some(item => item.role !== undefined) : payload.role !== undefined
+			if (assignsRole) await this._requireAdminSession(authorizationHeader)
+			else await this._requireAuthenticatedSession(authorizationHeader)
+		}
 
 		// 2. Initial creation
 		const unflattenedBody = Array.isArray(payload) ? payload.map(p => this._unflatten(p)) : this._unflatten(payload)
@@ -126,7 +130,13 @@ class UserService {
 	}
 	
 	async findOne(config = {}) {
-		const { id } = config
+		const { id, authorizationHeader, skipAuthCheck = false } = config
+
+		// 1. Reading user records requires an authenticated session - skipped for internal reuse
+		// (replace/remove re-reading the record they already authenticated for, and the trusted
+		// AuthenticationService.refresh()/validate() calls, which authenticate via the token itself)
+		if (!skipAuthCheck) await this._requireAuthenticatedSession(authorizationHeader)
+
 		let virtuals = {}
 		let relations = {}
 		const query = this.userInterface.getQueryInterface().parse({ _id: id, ...config.query?.query })
@@ -142,6 +152,9 @@ class UserService {
 	}
 	
 	async list(config = {}) {
+		// 1. Reading user records requires an authenticated session
+		await this._requireAuthenticatedSession(config.authorizationHeader)
+
 		let query = {}
 		let virtuals = {}
 		let relations = {}
@@ -161,7 +174,9 @@ class UserService {
 	async update(config = {}) {
 		const { body, id, files = [], options = {} } = config
 		const data = this._unflatten(body)
-		const existingUser = await this.findOne({ id })
+		// Not reachable directly over HTTP (PATCH /user/:id is wired to AccountManagementService.editProfile,
+		// which already authenticated the caller) - skip the check on this internal re-read.
+		const existingUser = await this.findOne({ id, skipAuthCheck: true })
 		const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
 
 		// 1. Initial update with JSON data
@@ -238,11 +253,12 @@ class UserService {
 	async replace(config = {}) {
 		const { body, id, files = [], options = {}, authorizationHeader } = config
 
-		// 1. Assigning a role is admin-only - anonymous/self registration never sets it directly
+		// 1. Replacing a user requires an authenticated session; assigning a role on top of that is admin-only
 		if (body && body.role !== undefined) await this._requireAdminSession(authorizationHeader)
+		else await this._requireAuthenticatedSession(authorizationHeader)
 
 		const data = this._unflatten(body)
-		const existingUser = await this.findOne({ id })
+		const existingUser = await this.findOne({ id, skipAuthCheck: true })
 		const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
 
 		// 2. Initial replace with JSON data
@@ -317,8 +333,12 @@ class UserService {
 	}
 	
 	async remove(config = {}) {
-		const { id, options = {} } = config
-		const existingUser = await this.findOne({ id })
+		const { id, options = {}, authorizationHeader } = config
+
+		// 1. Deleting a user outright is admin-only
+		await this._requireAdminSession(authorizationHeader)
+
+		const existingUser = await this.findOne({ id, skipAuthCheck: true })
 
 		const existingObj = existingUser.toObject ? existingUser.toObject() : existingUser
 		const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
@@ -359,6 +379,19 @@ class UserService {
 			token
 		})
 		await this.requireAdminUser.execute({ repository: this.repository, userId: session.user })
+	}
+
+	// Authenticates the caller from the access token, without requiring any particular role -
+	// used to gate raw model endpoints (User) that must stay off-limits to anonymous callers.
+	async _requireAuthenticatedSession(authorizationHeader) {
+		const token = this.extractBearerToken.execute({ authorizationHeader })
+		return this.findSessionByToken.execute({
+			repository: this.repository,
+			luxon: this.luxon,
+			tokenField: 'accessToken',
+			expiryField: 'accessTokenExpiresAt',
+			token
+		})
 	}
 
 	applayContract(payload) {

@@ -39,7 +39,7 @@ class Password_reset_tokenController {
 
 	async add(req, res) {
 		try {
-			const password_reset_token = await this.password_reset_tokenService.add({ body: req.body, files: req.files })
+			const password_reset_token = await this.password_reset_tokenService.add({ body: req.body, files: req.files, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(password_reset_token)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -53,7 +53,7 @@ class Password_reset_tokenController {
 	
 	async findOne(req, res) {
 		try {
-			const password_reset_token = await this.password_reset_tokenService.findOne({ id: req.params.id, query: req.query })
+			const password_reset_token = await this.password_reset_tokenService.findOne({ id: req.params.id, query: req.query, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(password_reset_token)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -67,7 +67,7 @@ class Password_reset_tokenController {
 	
 	async list(req, res) {
 		try {
-			const password_reset_token_list = await this.password_reset_tokenService.list({ query: req.query })
+			const password_reset_token_list = await this.password_reset_tokenService.list({ query: req.query, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(password_reset_token_list)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -81,7 +81,7 @@ class Password_reset_tokenController {
 	
 	async update(req, res) {
 		try {
-			const password_reset_token = await this.password_reset_tokenService.update({ body: req.body, id: req.params.id, files: req.files })
+			const password_reset_token = await this.password_reset_tokenService.update({ body: req.body, id: req.params.id, files: req.files, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(password_reset_token)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -95,7 +95,7 @@ class Password_reset_tokenController {
 
 	async replace(req, res) {
 		try {
-			const password_reset_token = await this.password_reset_tokenService.replace({ body: req.body, id: req.params.id, files: req.files })
+			const password_reset_token = await this.password_reset_tokenService.replace({ body: req.body, id: req.params.id, files: req.files, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(password_reset_token)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -109,7 +109,7 @@ class Password_reset_tokenController {
 	
 	async remove(req, res) {
 		try {
-			const password_reset_token = await this.password_reset_tokenService.remove({ id: req.params.id })
+			const password_reset_token = await this.password_reset_tokenService.remove({ id: req.params.id, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(password_reset_token)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)

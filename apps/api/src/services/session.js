@@ -3,11 +3,15 @@ const Contract = require('../contracts')
 const SessionInterfaces = require('../interfaces/session')
 const SessionContract = require('../contracts/session')
 const HandleResponseHandler = require('../handlers/handleResponse')
+const DataValidatorHandler = require('../handlers/dataValidator')
 const { BadRequestError } = require('../handlers/handleErrors')
 const FileManagerHandler = require('../handlers/fileManager')
 const path = require('path')
 const crypto = require('crypto')
 const envVariables = require('../handlers/envVariables')
+const ExtractBearerToken = require('./commands/extractBearerToken')
+const FindSessionByToken = require('./commands/findSessionByToken')
+const RequireAdminUser = require('./commands/requireAdminUser')
 
 class SessionService {
 	/**
@@ -52,6 +56,11 @@ class SessionService {
 
 		this.fileManagerHandler = FileManagerHandler.getInstance()
 		this.storageProvider = this.fileManagerHandler.getProvider()
+
+		this.luxon = DataValidatorHandler.getInstance().getLuxon()
+		this.extractBearerToken = ExtractBearerToken.getInstance()
+		this.findSessionByToken = FindSessionByToken.getInstance()
+		this.requireAdminUser = RequireAdminUser.getInstance()
 	}
 
 	static getInstance() {
@@ -60,10 +69,13 @@ class SessionService {
 	}
 
 	async add(config = {}) {
-		const { body, files = [], options = {} } = config
+		const { body, files = [], options = {}, authorizationHeader } = config
 		const payload = Array.isArray(body) ? [...body] : { ...body }
-		
-		// 1. Initial creation
+
+		// 1. Session is an internal identity record - only an admin may create one directly
+		await this._requireAdminSession(authorizationHeader)
+
+		// 2. Initial creation
 		const unflattenedBody = Array.isArray(payload) ? payload.map(p => this._unflatten(p)) : this._unflatten(payload)
 		const data = Array.isArray(unflattenedBody)
 			? unflattenedBody.map(el => this.sessionInterface.getCreateInterface().parse(el))
@@ -71,7 +83,7 @@ class SessionService {
 		
 		let session = await this.repository.add('session', { data, options })
 
-		// 2. Handle files if present
+		// 3. Handle files if present
 		if (files && files.length) {
 			const sessionId = Array.isArray(session) ? session[0]._id : session._id
 			const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
@@ -112,7 +124,12 @@ class SessionService {
 	}
 	
 	async findOne(config = {}) {
-		const { id } = config
+		const { id, authorizationHeader, skipAuthCheck = false } = config
+
+		// 1. Session is an internal identity record - only an admin may read one directly (skipped
+		// for internal reuse: update/replace/remove re-reading the record they already authenticated for)
+		if (!skipAuthCheck) await this._requireAdminSession(authorizationHeader)
+
 		let virtuals = {}
 		let relations = {}
 		const query = this.sessionInterface.getQueryInterface().parse({ _id: id, ...config.query?.query })
@@ -128,6 +145,9 @@ class SessionService {
 	}
 	
 	async list(config = {}) {
+		// 1. Session is an internal identity record - only an admin may list them
+		await this._requireAdminSession(config.authorizationHeader)
+
 		let query = {}
 		let virtuals = {}
 		let relations = {}
@@ -145,18 +165,22 @@ class SessionService {
 	}
 	
 	async update(config = {}) {
-		const { body, id, files = [], options = {} } = config
+		const { body, id, files = [], options = {}, authorizationHeader } = config
+
+		// 1. Session is an internal identity record - only an admin may edit one directly
+		await this._requireAdminSession(authorizationHeader)
+
 		const data = this._unflatten(body)
-		const existingSession = await this.findOne({ id })
+		const existingSession = await this.findOne({ id, skipAuthCheck: true })
 		const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
 
-		// 1. Initial update with JSON data
+		// 2. Initial update with JSON data
 		const payload = this.sessionInterface.getUpdateInterface().parse(data)
 		let session = await this.repository.update('session', { id, data: payload, options })
-		
+
 		const existingObj = existingSession.toObject ? existingSession.toObject() : existingSession;
 
-		// 2. Handle files if present
+		// 3. Handle files if present
 		if (files && files.length) {
 			const updates = {}
 			const savedFiles = []
@@ -194,7 +218,7 @@ class SessionService {
 			}
 		}
 
-		// 3. Proactive cleanup: Map paths from both objects to ensure we catch removed fields
+		// 4. Proactive cleanup: Map paths from both objects to ensure we catch removed fields
 		const mappedPathsData = this._getFilePaths(data)
 		const mappedPathsOld = this._getFilePaths(existingObj)
 		const allPaths = [...new Set([...mappedPathsData, ...mappedPathsOld])]
@@ -222,18 +246,22 @@ class SessionService {
 	}
 
 	async replace(config = {}) {
-		const { body, id, files = [], options = {} } = config
+		const { body, id, files = [], options = {}, authorizationHeader } = config
+
+		// 1. Session is an internal identity record - only an admin may replace one directly
+		await this._requireAdminSession(authorizationHeader)
+
 		const data = this._unflatten(body)
-		const existingSession = await this.findOne({ id })
+		const existingSession = await this.findOne({ id, skipAuthCheck: true })
 		const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
-		
-		// 1. Initial replace with JSON data
+
+		// 2. Initial replace with JSON data
 		const payload = this.sessionInterface.getUpdateInterface().parse(data)
 		let session = await await this.repository.replace('session', { id, data: payload, options })
 
 		const existingObj = existingSession.toObject ? existingSession.toObject() : existingSession;
 
-		// 2. Handle files if present
+		// 3. Handle files if present
 		if (files && files.length) {
 			const updates = {}
 			const savedFiles = []
@@ -271,7 +299,7 @@ class SessionService {
 			}
 		}
 
-		// 3. Proactive cleanup: Map paths from both objects to ensure we catch removed fields
+		// 4. Proactive cleanup: Map paths from both objects to ensure we catch removed fields
 		const mappedPathsData = this._getFilePaths(data)
 		const mappedPathsOld = this._getFilePaths(existingObj)
 		const allPaths = [...new Set([...mappedPathsData, ...mappedPathsOld])]
@@ -297,10 +325,14 @@ class SessionService {
 
 		return this.applayContract(session)
 	}
-	
+
 	async remove(config = {}) {
-		const { id, options = {} } = config
-		const existingSession = await this.findOne({ id })
+		const { id, options = {}, authorizationHeader } = config
+
+		// 1. Session is an internal identity record - only an admin may delete one directly
+		await this._requireAdminSession(authorizationHeader)
+
+		const existingSession = await this.findOne({ id, skipAuthCheck: true })
 
 		const existingObj = existingSession.toObject ? existingSession.toObject() : existingSession
 		const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
@@ -327,6 +359,20 @@ class SessionService {
 		}
 
 		return repositoryResponse
+	}
+
+	// Authenticates the caller from the access token and requires an admin role - Session is an
+	// internal identity record, so every raw CRUD operation on it is admin-only, unconditionally.
+	async _requireAdminSession(authorizationHeader) {
+		const token = this.extractBearerToken.execute({ authorizationHeader })
+		const session = await this.findSessionByToken.execute({
+			repository: this.repository,
+			luxon: this.luxon,
+			tokenField: 'accessToken',
+			expiryField: 'accessTokenExpiresAt',
+			token
+		})
+		await this.requireAdminUser.execute({ repository: this.repository, userId: session.user })
 	}
 
 	applayContract(payload) {

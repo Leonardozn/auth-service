@@ -106,8 +106,9 @@ class AuthenticationService {
 		// Step 3: persist the rotated tokens on the existing session
 		await this.repository.update('session', { id: session._id, data: tokenPair })
 
-		// Step 4: return the renewed tokens with the session's user
-		const user = await this.userService.findOne({ id: session.user })
+		// Step 4: return the renewed tokens with the session's user - already authenticated via the
+		// refresh token itself, so this internal read skips User's own session check
+		const user = await this.userService.findOne({ id: session.user, skipAuthCheck: true })
 
 		return {
 			token: tokenPair.accessToken,
@@ -128,8 +129,9 @@ class AuthenticationService {
 			token
 		})
 
-		// Step 2: return the session's user (including role) - the caller never decodes the token itself
-		const user = await this.userService.findOne({ id: session.user })
+		// Step 2: return the session's user (including role) - the caller never decodes the token itself;
+		// already authenticated via the access token, so this internal read skips User's own session check
+		const user = await this.userService.findOne({ id: session.user, skipAuthCheck: true })
 
 		return { user }
 	}

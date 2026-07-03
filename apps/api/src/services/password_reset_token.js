@@ -3,11 +3,15 @@ const Contract = require('../contracts')
 const Password_reset_tokenInterfaces = require('../interfaces/password_reset_token')
 const Password_reset_tokenContract = require('../contracts/password_reset_token')
 const HandleResponseHandler = require('../handlers/handleResponse')
+const DataValidatorHandler = require('../handlers/dataValidator')
 const { BadRequestError } = require('../handlers/handleErrors')
 const FileManagerHandler = require('../handlers/fileManager')
 const path = require('path')
 const crypto = require('crypto')
 const envVariables = require('../handlers/envVariables')
+const ExtractBearerToken = require('./commands/extractBearerToken')
+const FindSessionByToken = require('./commands/findSessionByToken')
+const RequireAdminUser = require('./commands/requireAdminUser')
 
 class Password_reset_tokenService {
 	/**
@@ -52,6 +56,11 @@ class Password_reset_tokenService {
 
 		this.fileManagerHandler = FileManagerHandler.getInstance()
 		this.storageProvider = this.fileManagerHandler.getProvider()
+
+		this.luxon = DataValidatorHandler.getInstance().getLuxon()
+		this.extractBearerToken = ExtractBearerToken.getInstance()
+		this.findSessionByToken = FindSessionByToken.getInstance()
+		this.requireAdminUser = RequireAdminUser.getInstance()
 	}
 
 	static getInstance() {
@@ -60,10 +69,13 @@ class Password_reset_tokenService {
 	}
 
 	async add(config = {}) {
-		const { body, files = [], options = {} } = config
+		const { body, files = [], options = {}, authorizationHeader } = config
 		const payload = Array.isArray(body) ? [...body] : { ...body }
-		
-		// 1. Initial creation
+
+		// 1. Password reset tokens are an internal recovery record - only an admin may create one directly
+		await this._requireAdminSession(authorizationHeader)
+
+		// 2. Initial creation
 		const unflattenedBody = Array.isArray(payload) ? payload.map(p => this._unflatten(p)) : this._unflatten(payload)
 		const data = Array.isArray(unflattenedBody)
 			? unflattenedBody.map(el => this.password_reset_tokenInterface.getCreateInterface().parse(el))
@@ -71,7 +83,7 @@ class Password_reset_tokenService {
 		
 		let password_reset_token = await this.repository.add('password_reset_token', { data, options })
 
-		// 2. Handle files if present
+		// 3. Handle files if present
 		if (files && files.length) {
 			const password_reset_tokenId = Array.isArray(password_reset_token) ? password_reset_token[0]._id : password_reset_token._id
 			const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
@@ -112,7 +124,13 @@ class Password_reset_tokenService {
 	}
 	
 	async findOne(config = {}) {
-		const { id } = config
+		const { id, authorizationHeader, skipAuthCheck = false } = config
+
+		// 1. Password reset tokens are an internal recovery record - only an admin may read one
+		// directly (skipped for internal reuse: update/replace/remove re-reading the record they
+		// already authenticated for)
+		if (!skipAuthCheck) await this._requireAdminSession(authorizationHeader)
+
 		let virtuals = {}
 		let relations = {}
 		const query = this.password_reset_tokenInterface.getQueryInterface().parse({ _id: id, ...config.query?.query })
@@ -128,6 +146,9 @@ class Password_reset_tokenService {
 	}
 	
 	async list(config = {}) {
+		// 1. Password reset tokens are an internal recovery record - only an admin may list them
+		await this._requireAdminSession(config.authorizationHeader)
+
 		let query = {}
 		let virtuals = {}
 		let relations = {}
@@ -145,18 +166,22 @@ class Password_reset_tokenService {
 	}
 	
 	async update(config = {}) {
-		const { body, id, files = [], options = {} } = config
+		const { body, id, files = [], options = {}, authorizationHeader } = config
+
+		// 1. Password reset tokens are an internal recovery record - only an admin may edit one directly
+		await this._requireAdminSession(authorizationHeader)
+
 		const data = this._unflatten(body)
-		const existingPassword_reset_token = await this.findOne({ id })
+		const existingPassword_reset_token = await this.findOne({ id, skipAuthCheck: true })
 		const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
 
-		// 1. Initial update with JSON data
+		// 2. Initial update with JSON data
 		const payload = this.password_reset_tokenInterface.getUpdateInterface().parse(data)
 		let password_reset_token = await this.repository.update('password_reset_token', { id, data: payload, options })
-		
+
 		const existingObj = existingPassword_reset_token.toObject ? existingPassword_reset_token.toObject() : existingPassword_reset_token;
 
-		// 2. Handle files if present
+		// 3. Handle files if present
 		if (files && files.length) {
 			const updates = {}
 			const savedFiles = []
@@ -194,7 +219,7 @@ class Password_reset_tokenService {
 			}
 		}
 
-		// 3. Proactive cleanup: Map paths from both objects to ensure we catch removed fields
+		// 4. Proactive cleanup: Map paths from both objects to ensure we catch removed fields
 		const mappedPathsData = this._getFilePaths(data)
 		const mappedPathsOld = this._getFilePaths(existingObj)
 		const allPaths = [...new Set([...mappedPathsData, ...mappedPathsOld])]
@@ -222,18 +247,22 @@ class Password_reset_tokenService {
 	}
 
 	async replace(config = {}) {
-		const { body, id, files = [], options = {} } = config
+		const { body, id, files = [], options = {}, authorizationHeader } = config
+
+		// 1. Password reset tokens are an internal recovery record - only an admin may replace one directly
+		await this._requireAdminSession(authorizationHeader)
+
 		const data = this._unflatten(body)
-		const existingPassword_reset_token = await this.findOne({ id })
+		const existingPassword_reset_token = await this.findOne({ id, skipAuthCheck: true })
 		const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
-		
-		// 1. Initial replace with JSON data
+
+		// 2. Initial replace with JSON data
 		const payload = this.password_reset_tokenInterface.getUpdateInterface().parse(data)
 		let password_reset_token = await await this.repository.replace('password_reset_token', { id, data: payload, options })
 
 		const existingObj = existingPassword_reset_token.toObject ? existingPassword_reset_token.toObject() : existingPassword_reset_token;
 
-		// 2. Handle files if present
+		// 3. Handle files if present
 		if (files && files.length) {
 			const updates = {}
 			const savedFiles = []
@@ -271,7 +300,7 @@ class Password_reset_tokenService {
 			}
 		}
 
-		// 3. Proactive cleanup: Map paths from both objects to ensure we catch removed fields
+		// 4. Proactive cleanup: Map paths from both objects to ensure we catch removed fields
 		const mappedPathsData = this._getFilePaths(data)
 		const mappedPathsOld = this._getFilePaths(existingObj)
 		const allPaths = [...new Set([...mappedPathsData, ...mappedPathsOld])]
@@ -297,10 +326,14 @@ class Password_reset_tokenService {
 
 		return this.applayContract(password_reset_token)
 	}
-	
+
 	async remove(config = {}) {
-		const { id, options = {} } = config
-		const existingPassword_reset_token = await this.findOne({ id })
+		const { id, options = {}, authorizationHeader } = config
+
+		// 1. Password reset tokens are an internal recovery record - only an admin may delete one directly
+		await this._requireAdminSession(authorizationHeader)
+
+		const existingPassword_reset_token = await this.findOne({ id, skipAuthCheck: true })
 
 		const existingObj = existingPassword_reset_token.toObject ? existingPassword_reset_token.toObject() : existingPassword_reset_token
 		const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
@@ -327,6 +360,20 @@ class Password_reset_tokenService {
 		}
 
 		return repositoryResponse
+	}
+
+	// Authenticates the caller from the access token and requires an admin role - PasswordResetToken
+	// is an internal recovery record, so every raw CRUD operation on it is admin-only, unconditionally.
+	async _requireAdminSession(authorizationHeader) {
+		const token = this.extractBearerToken.execute({ authorizationHeader })
+		const session = await this.findSessionByToken.execute({
+			repository: this.repository,
+			luxon: this.luxon,
+			tokenField: 'accessToken',
+			expiryField: 'accessTokenExpiresAt',
+			token
+		})
+		await this.requireAdminUser.execute({ repository: this.repository, userId: session.user })
 	}
 
 	applayContract(payload) {

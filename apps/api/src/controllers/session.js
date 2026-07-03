@@ -39,7 +39,7 @@ class SessionController {
 
 	async add(req, res) {
 		try {
-			const session = await this.sessionService.add({ body: req.body, files: req.files })
+			const session = await this.sessionService.add({ body: req.body, files: req.files, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(session)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -53,7 +53,7 @@ class SessionController {
 	
 	async findOne(req, res) {
 		try {
-			const session = await this.sessionService.findOne({ id: req.params.id, query: req.query })
+			const session = await this.sessionService.findOne({ id: req.params.id, query: req.query, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(session)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -67,7 +67,7 @@ class SessionController {
 	
 	async list(req, res) {
 		try {
-			const session_list = await this.sessionService.list({ query: req.query })
+			const session_list = await this.sessionService.list({ query: req.query, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(session_list)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -81,7 +81,7 @@ class SessionController {
 	
 	async update(req, res) {
 		try {
-			const session = await this.sessionService.update({ body: req.body, id: req.params.id, files: req.files })
+			const session = await this.sessionService.update({ body: req.body, id: req.params.id, files: req.files, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(session)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -95,7 +95,7 @@ class SessionController {
 
 	async replace(req, res) {
 		try {
-			const session = await this.sessionService.replace({ body: req.body, id: req.params.id, files: req.files })
+			const session = await this.sessionService.replace({ body: req.body, id: req.params.id, files: req.files, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(session)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -109,7 +109,7 @@ class SessionController {
 	
 	async remove(req, res) {
 		try {
-			const session = await this.sessionService.remove({ id: req.params.id })
+			const session = await this.sessionService.remove({ id: req.params.id, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(session)
 	
 			res.status(response[this.responseBody.STATUS]).json(response)

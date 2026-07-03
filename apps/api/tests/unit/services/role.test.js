@@ -23,22 +23,32 @@ function seed() {
 	return repo
 }
 
-// Seeds an admin (role + user + session) - every Role mutation is admin-only
-// (RoleService._requireAdminSession), so tests exercising those paths need one.
-async function seedAdminSession(repository) {
+async function seedSession(repository, { roleName, accessToken }) {
 	const { DateTime } = luxon
-	const adminRole = await repository.add('role', { data: { name: 'admin', active: true } })
-	const admin = await repository.add('user', { data: { name: 'Root', email: 'root@example.com', password: 'hash', role: String(adminRole._id), active: true } })
+	const role = await repository.add('role', { data: { name: roleName, active: true } })
+	const user = await repository.add('user', { data: { name: 'Root', email: `${roleName}@example.com`, password: 'hash', role: String(role._id), active: true } })
 	await repository.add('session', {
 		data: {
-			user: String(admin._id),
-			accessToken: 'admin-access-token',
+			user: String(user._id),
+			accessToken,
 			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
-			refreshToken: 'admin-refresh-token',
+			refreshToken: `${accessToken}-refresh`,
 			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
 		}
 	})
-	return admin
+	return user
+}
+
+// Seeds an admin (role + user + session) - every Role mutation is admin-only
+// (RoleService._requireAdminSession), so tests exercising those paths need one.
+function seedAdminSession(repository) {
+	return seedSession(repository, { roleName: 'admin', accessToken: 'admin-access-token' })
+}
+
+// Seeds a non-admin, authenticated user - reading a Role still requires some authenticated
+// session (RoleService._requireAuthenticatedSession).
+function seedUserSession(repository) {
+	return seedSession(repository, { roleName: 'user', accessToken: 'user-access-token' })
 }
 
 beforeEach(() => {
@@ -63,18 +73,7 @@ test('role service add() — throws when called without an admin session', async
 
 test('role service add() — throws when called with a non-admin session', async () => {
 	const repository = MockRepository.getInstance()
-	const { DateTime } = luxon
-	const userRole = await repository.add('role', { data: { name: 'user', active: true } })
-	const user = await repository.add('user', { data: { name: 'Bob', email: 'bob@example.com', password: 'hash', role: String(userRole._id), active: true } })
-	await repository.add('session', {
-		data: {
-			user: String(user._id),
-			accessToken: 'user-access-token',
-			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
-			refreshToken: 'user-refresh-token',
-			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
-		}
-	})
+	await seedUserSession(repository)
 	const service = RoleService.getInstance()
 
 	await assert.rejects(
@@ -83,30 +82,48 @@ test('role service add() — throws when called with a non-admin session', async
 	)
 })
 
-test('role service findOne() — returns the contract-filtered record by id', async () => {
-	seed()
+test('role service findOne() — returns the contract-filtered record by id, for any authenticated session', async () => {
+	const repository = seed()
+	await seedUserSession(repository)
 	const service = RoleService.getInstance()
 
-	const result = await service.findOne({ id: SEED_ID })
+	const result = await service.findOne({ id: SEED_ID, authorizationHeader: 'Bearer user-access-token' })
 
 	assert.deepEqual(result, SAMPLE)
 })
 
-test('role service findOne() — throws when the record does not exist', async () => {
-	MockRepository.getInstance()
-	const service = RoleService.getInstance()
-
-	await assert.rejects(() => service.findOne({ id: SEED_ID }))
-})
-
-test('role service list() — returns count and contract-filtered records', async () => {
+test('role service findOne() — throws without any session', async () => {
 	seed()
 	const service = RoleService.getInstance()
 
-	const result = await service.list({})
+	await assert.rejects(() => service.findOne({ id: SEED_ID }), { name: 'UnauthorizedError' })
+})
 
-	assert.equal(result.count, 1)
-	assert.deepEqual(result.records, [SAMPLE])
+test('role service findOne() — throws when the record does not exist', async () => {
+	const repository = MockRepository.getInstance()
+	await seedUserSession(repository)
+	const service = RoleService.getInstance()
+
+	await assert.rejects(() => service.findOne({ id: SEED_ID, authorizationHeader: 'Bearer user-access-token' }))
+})
+
+test('role service list() — returns count and contract-filtered records, for any authenticated session', async () => {
+	const repository = seed()
+	await seedUserSession(repository)
+	const service = RoleService.getInstance()
+
+	const result = await service.list({ authorizationHeader: 'Bearer user-access-token' })
+
+	// SAMPLE plus the seeded "user" role itself.
+	assert.equal(result.count, 2)
+	assert.ok(result.records.some(r => r.name === SAMPLE.name && r.active === SAMPLE.active))
+})
+
+test('role service list() — throws without any session', async () => {
+	seed()
+	const service = RoleService.getInstance()
+
+	await assert.rejects(() => service.list({}), { name: 'UnauthorizedError' })
 })
 
 test('role service update() — patches and returns the contract-filtered record, as an admin', async () => {
@@ -152,7 +169,7 @@ test('role service remove() — deletes the record, as an admin', async () => {
 
 	assert.equal(result.deletedCount, 1)
 
-	await assert.rejects(() => service.findOne({ id: SEED_ID }))
+	await assert.rejects(() => service.findOne({ id: SEED_ID, authorizationHeader: 'Bearer admin-access-token' }))
 })
 
 test('role service remove() — throws when called without an admin session', async () => {
