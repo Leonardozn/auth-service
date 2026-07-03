@@ -1,7 +1,7 @@
 const { test, beforeEach } = require('node:test')
 const assert = require('node:assert/strict')
 const MockRepository = require('../../support/mock-repository-preload')
-const MockEmailResend = require('../../support/mock-email-resend-preload')
+const MockEmailManager = require('../../support/mock-email-manager-preload')
 const DataEncryptHandler = require('../../../src/handlers/dataEncrypt')
 const DataValidatorHandler = require('../../../src/handlers/dataValidator')
 const AccountManagementService = require('../../../src/services/accountManagement')
@@ -93,7 +93,7 @@ test('AccountManagementService.changePassword() — throws when the access token
 test('AccountManagementService.forgotPassword() — creates a reset token and emails it when the user exists', async () => {
 	const repository = MockRepository.getInstance()
 	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
-	const mockEmail = MockEmailResend.getInstance()
+	const mockEmail = MockEmailManager.getInstance()
 	let capturedSend
 	mockEmail.send = async (config) => { capturedSend = config; return { id: 'mock-email-id' } }
 	const service = AccountManagementService.getInstance()
@@ -112,7 +112,7 @@ test('AccountManagementService.forgotPassword() — creates a reset token and em
 
 test('AccountManagementService.forgotPassword() — responds successfully without creating a token when the email is unknown', async () => {
 	const repository = MockRepository.getInstance()
-	const mockEmail = MockEmailResend.getInstance()
+	const mockEmail = MockEmailManager.getInstance()
 	let sendCalled = false
 	mockEmail.send = async () => { sendCalled = true; return { id: 'mock-email-id' } }
 	const service = AccountManagementService.getInstance()
@@ -128,7 +128,7 @@ test('AccountManagementService.forgotPassword() — responds successfully withou
 test('AccountManagementService.forgotPassword() — still responds successfully when the email fails to send', async () => {
 	const repository = MockRepository.getInstance()
 	await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
-	const mockEmail = MockEmailResend.getInstance()
+	const mockEmail = MockEmailManager.getInstance()
 	mockEmail.send = async () => { throw new Error('Resend is down') }
 	const service = AccountManagementService.getInstance()
 

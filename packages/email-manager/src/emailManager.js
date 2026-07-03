@@ -1,6 +1,6 @@
 const ExternalApiConfig = require('@auth-service/external-api-config')
 
-class EmailResend {
+class EmailManager {
 	/**
 	 * @private
 	 * @static
@@ -8,7 +8,7 @@ class EmailResend {
 	instance
 
 	static getInstance() {
-		if (!this.instance) this.instance = new EmailResend()
+		if (!this.instance) this.instance = new EmailManager()
 		return this.instance
 	}
 
@@ -35,4 +35,4 @@ class EmailResend {
 	}
 }
 
-module.exports = EmailResend
+module.exports = EmailManager

@@ -29,7 +29,7 @@ recursos. auth-service es la fuente de verdad de *quién es* el usuario y *qué 
 1. Definir y generar los modelos del módulo Authentication: `Role`, `User`, `Session` (Session
    con `accessToken`/`accessTokenExpiresAt` y `refreshToken`/`refreshTokenExpiresAt`).
 2. Definir y generar el modelo del módulo AccountManagement: `PasswordResetToken`.
-3. Crear el paquete `@backend/email-resend` envolviendo `resend` (por `proc-no-new-packages`),
+3. Crear el paquete `@auth-service/email-manager` envolviendo `resend` (por `proc-no-new-packages`),
    consumido a través de su handler. (Necesario antes de la recuperación de contraseña.)
 4. Crear las variables de entorno (evars) del proyecto: `SESSION_TOKEN_DEFAULT_TIME`,
    `REFRESH_TOKEN_DEFAULT_TIME`, `RESET_TOKEN_DEFAULT_TIME`, `RESEND_TOKEN`, `RESEND_API_URL`,
@@ -42,9 +42,9 @@ recursos. auth-service es la fuente de verdad de *quién es* el usuario y *qué 
 9. Implementar el contrato: cerrar sesión (`POST /auth/logout`).
 10. Implementar el contrato: cambiar contraseña (`POST /auth/change-password`).
 11. Implementar el contrato: solicitar recuperación (`POST /auth/forgot-password`) — usa
-    `@backend/email-resend`.
+    `@auth-service/email-manager`.
 12. Implementar el contrato: enviar el email de recuperación vía Resend (auth-service → Resend)
-    — usa `@backend/email-resend`.
+    — usa `@auth-service/email-manager`.
 13. Implementar el contrato: restablecer contraseña (`POST /auth/reset-password`).
 14. Implementar el contrato: gestión de cuenta — editar perfil (`PATCH /user/:id`) y desactivar
     la propia cuenta (`POST /auth/deactivate`).
