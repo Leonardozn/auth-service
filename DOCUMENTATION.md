@@ -208,11 +208,12 @@ commitea — su valor se toma del entorno al crear el evar). Los tiempos usan fo
 ##### Role
 Datos configurables (nuevos roles sin cambiar código).
 
-| Campo  | Tipo    | Requerido | Descripción                                |
-| ------ | ------- | --------- | ------------------------------------------ |
-| id     | id      | sí        | Identificador único del rol                |
-| name   | string  | sí        | Nombre del rol (p. ej., user, admin)       |
-| active | boolean | sí        | Si el rol puede asignarse actualmente      |
+| Campo       | Tipo    | Requerido | Descripción                                                                 |
+| ----------- | ------- | --------- | ---------------------------------------------------------------------------- |
+| id          | id      | sí        | Identificador único del rol                                                |
+| name        | string  | sí        | Nombre del rol (p. ej., user, admin)                                       |
+| active      | boolean | sí        | Si el rol puede asignarse actualmente                                      |
+| maxSessions | number  | no        | Límite de sesiones concurrentes por usuario con este rol. Vacío o <= 0 = sin límite; al superarlo, login() elimina la sesión más antigua |
 
 ##### User
 
