@@ -117,8 +117,8 @@ const AuthController = require('../controllers/auth')
  *     summary: Validate an access token (base of the authentication protocol)
  *     description: |
  *       The contract every other service (e.g. cv-service) uses to authorize requests: forward
- *       the caller's access token here and trust the returned `user` (including `role`) -
- *       never decode the opaque token directly.
+ *       the caller's access token here and trust the returned `user` - never decode the opaque
+ *       token directly. `user.role` is the Role's name (e.g. "admin"/"user"), not its id.
  *     requestBody:
  *       required: true
  *       content:
@@ -134,7 +134,7 @@ const AuthController = require('../controllers/auth')
  *         description: Token is valid and not expired
  *         content:
  *           application/json:
- *             example: { success: true, message: "Success!", statusCode: 200, content: { user: { _id: "28ea21407ef7a29c2ffbe909", name: "Ada", email: "ada@example.com", role: "64b0c0ffee1234567890abee", active: true } } }
+ *             example: { success: true, message: "Success!", statusCode: 200, content: { user: { _id: "28ea21407ef7a29c2ffbe909", name: "Ada", email: "ada@example.com", role: "admin", active: true } } }
  *       401:
  *         description: No session matches the given token, or it has expired
  *         content:

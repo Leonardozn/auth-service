@@ -189,7 +189,8 @@ test('AuthenticationService.refresh() — throws when the refresh token has expi
 test('AuthenticationService.validate() — returns the user for a valid, non-expired access token', async () => {
 	const repository = MockRepository.getInstance()
 	const { DateTime } = luxon
-	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	const role = await repository.add('role', { data: { name: 'admin', active: true } })
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: String(role._id) } })
 	await repository.add('session', {
 		data: {
 			user: String(user._id),
@@ -205,6 +206,9 @@ test('AuthenticationService.validate() — returns the user for a valid, non-exp
 
 	assert.equal(result.user.name, 'Ada')
 	assert.equal(result.user.email, 'ada@example.com')
+	// role must resolve to its name, not the raw id stored on the User document - this is the
+	// contract other services (e.g. cv-service) authorize off
+	assert.equal(result.user.role, 'admin')
 	assert.equal(result.user.password, undefined)
 })
 
