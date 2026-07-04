@@ -192,6 +192,9 @@ test('auth routes — POST /auth/validate returns the user for a valid access to
 		assert.equal(res.body.success, true)
 		assert.equal(res.body.content.user.name, 'Ada')
 		assert.equal(res.body.content.user.email, 'ada@example.com')
+		// role must resolve to the Role's name (what cv-service and other consumers authorize
+		// off), never the raw ObjectId the User document actually stores
+		assert.equal(res.body.content.user.role, 'user')
 		assert.equal(res.body.content.user.password, undefined)
 	} finally {
 		await app.stop()
