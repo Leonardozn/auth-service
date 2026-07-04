@@ -218,13 +218,14 @@ class RoleService {
 			}
 		}
 
-		// 4. Proactive cleanup: Map paths from both objects to ensure we catch removed fields
-		const mappedPathsData = this._getFilePaths(data)
-		const mappedPathsOld = this._getFilePaths(existingObj)
-		const allPaths = [...new Set([...mappedPathsData, ...mappedPathsOld])]
+		// 4. Proactive cleanup: on a PATCH only the file fields present in `data` change; a file
+		// field absent from the body is unchanged, so its stored file must be kept (the record
+		// still points to it). Consider only paths from the incoming body - never the union with
+		// the existing record, which is correct only for replace()/PUT (full-document semantics).
+		const mappedPaths = this._getFilePaths(data)
 
-		if (allPaths.length > 0) {
-			for (const filePath of allPaths) {
+		if (mappedPaths.length > 0) {
+			for (const filePath of mappedPaths) {
 				const newValue = this._getValueByPath(data, filePath)
 				const oldValue = this._getValueByPath(existingObj, filePath)
 				if (oldValue && oldValue !== newValue) {
