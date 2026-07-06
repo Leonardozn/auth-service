@@ -16,6 +16,7 @@ const FindSessionByToken = require('./commands/findSessionByToken')
 const ExtractBearerToken = require('./commands/extractBearerToken')
 const RemoveSessionByToken = require('./commands/removeSessionByToken')
 const EnforceSessionLimit = require('./commands/enforceSessionLimit')
+const ResolveRoleName = require('./commands/resolveRoleName')
 
 class AuthenticationService {
 	/**
@@ -42,6 +43,7 @@ class AuthenticationService {
 		this.extractBearerToken = ExtractBearerToken.getInstance()
 		this.removeSessionByToken = RemoveSessionByToken.getInstance()
 		this.enforceSessionLimit = EnforceSessionLimit.getInstance()
+		this.resolveRoleName = ResolveRoleName.getInstance()
 	}
 
 	static getInstance() {
@@ -137,9 +139,13 @@ class AuthenticationService {
 			token
 		})
 
-		// Step 2: return the session's user (including role) - the caller never decodes the token itself;
-		// already authenticated via the access token, so this internal read skips User's own session check
+		// Step 2: return the session's user - the caller never decodes the token itself; already
+		// authenticated via the access token, so this internal read skips User's own session check
 		const user = await this.userService.findOne({ id: session.user, skipAuthCheck: true })
+
+		// Step 3: expose the role's name (not its id) - this is the contract every other service
+		// (e.g. cv-service) authorizes off, so `role` must resolve to 'admin'/'user', not an id
+		user.role = await this.resolveRoleName.execute({ repository: this.repository, roleId: user.role })
 
 		return { user }
 	}
