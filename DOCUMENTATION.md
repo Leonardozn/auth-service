@@ -131,6 +131,8 @@ commitea — su valor se toma del entorno al crear el evar). Los tiempos usan fo
 | `RESEND_API_URL` | `https://api.resend.com/emails` | Endpoint de envío de Resend |
 | `ADMIN_MAIL_FROM` | `onboarding@resend.dev` | Remitente del email de recuperación |
 | `PASSWORD_RESET_URL_BASE` | `http://localhost:5173/reset-password` | Base del enlace de restablecimiento del email |
+| `CHANGE_PASSWORD_CODE_DEFAULT_TIME` | `5m` | Duración del código de verificación de cambio de contraseña |
+| `CHANGE_PASSWORD_CODE_MAX_ATTEMPTS` | `5` | Intentos fallidos permitidos antes de invalidar el código |
 
 ### Contrato: el frontend registra un usuario vía auth-service
 - `POST /auth/register` (acción personalizada)
@@ -166,9 +168,23 @@ commitea — su valor se toma del entorno al crear el evar). Los tiempos usan fo
   (elimina) la Session de ese token. Respuesta 200 `content: null`. Idempotente.
 
 ### Contrato: el frontend cambia la contraseña (usuario autenticado) vía auth-service
-- `POST /auth/change-password` (acción personalizada). Requiere `Authorization: Bearer <token>`.
-- Request: `{ currentPassword: <string>, newPassword: <string> }`
-- Respuesta 200 `content: null`; 401 si `currentPassword` no coincide. Revoca las demás sesiones.
+Flujo en dos pasos: el paso 1 solo valida y envía un código de verificación por email; el cambio
+real ocurre en el paso 2, al confirmar ese código. Esto asegura que quien solicita el cambio es
+dueño de la cuenta (email), además de estar logueado.
+- Paso 1 — `POST /auth/change-password` (acción personalizada). Requiere
+  `Authorization: Bearer <token>`.
+  - Request: `{ currentPassword: <string>, newPassword: <string> }`
+  - Respuesta 200 `content: null`; 401 si `currentPassword` no coincide. No cambia la contraseña
+    todavía: genera un `ChangePasswordVerificationCode` (código de 6 dígitos, expira en
+    `CHANGE_PASSWORD_CODE_DEFAULT_TIME`) con `newPassword` ya hasheada, invalida cualquier código
+    pendiente anterior del usuario y envía el código por email vía Resend.
+- Paso 2 — `POST /auth/change-password/verify` (acción personalizada). Requiere
+  `Authorization: Bearer <token>` (la misma sesión).
+  - Request: `{ code: <string> }`
+  - Respuesta 200 `content: null` y aplica la nueva contraseña, revocando las demás sesiones
+    (deja viva la actual); 400 si no hay un cambio pendiente o el código expiró; 401 si el código
+    no coincide (cuenta como intento fallido) - tras `CHANGE_PASSWORD_CODE_MAX_ATTEMPTS` intentos
+    fallidos el código se invalida y hay que solicitar uno nuevo desde el paso 1.
 
 ### Contrato: el frontend solicita recuperar contraseña vía auth-service
 - `POST /auth/forgot-password` (acción personalizada)
@@ -253,6 +269,20 @@ Token de un solo uso para restablecer la contraseña, enviado por email vía Res
 | expiresAt | datetime         | sí        | Fecha de expiración del token                    |
 | used      | boolean          | sí        | Si el token ya fue usado (no reutilizable)       |
 
+##### ChangePasswordVerificationCode
+Código de un solo uso (6 dígitos) para confirmar un cambio de contraseña, enviado por email vía
+Resend. Guarda la nueva contraseña ya hasheada para no tener que reenviarla en el paso 2.
+
+| Campo           | Tipo             | Requerido | Descripción                                              |
+| --------------- | ---------------- | --------- | --------------------------------------------------------- |
+| id              | id               | sí        | Identificador único del código                            |
+| user            | reference → User | sí        | Usuario que solicitó el cambio                             |
+| code            | string           | sí        | Código de verificación de 6 dígitos                        |
+| newPasswordHash | string           | sí        | Nueva contraseña, ya hasheada (data-encrypt)               |
+| expiresAt       | datetime         | sí        | Fecha de expiración del código (CHANGE_PASSWORD_CODE_DEFAULT_TIME) |
+| used            | boolean          | sí        | Si el código ya fue usado o invalidado (no reutilizable)   |
+| attempts        | number           | sí        | Intentos fallidos de verificación (máximo CHANGE_PASSWORD_CODE_MAX_ATTEMPTS) |
+
 ## 9. Business Logic
 
 ### auth-service
@@ -307,17 +337,34 @@ Resultado: Sesión revocada (access y refresh); validaciones futuras devuelven 4
 Resultado: El User autenticado, o no autorizado. auth-service decide la validez del token.
 
 #### Módulo: AccountManagement
-Usa: User, Session, PasswordResetToken, Resend (terceros)
+Usa: User, Session, PasswordResetToken, ChangePasswordVerificationCode, Resend (terceros)
 Responsabilidad: Cambiar y recuperar la contraseña y gestionar la cuenta, sobre la propia cuenta
 del usuario autenticado (o un admin sobre cualquiera).
 
-#### Proceso: Cambiar Contraseña
+#### Proceso: Cambiar Contraseña (paso 1 de 2 - solicitar código)
 1. Recibe currentPassword y newPassword, con el token en el header.
 2. Valida la sesión y ubica al User; verifica currentPassword contra el hash.
 3. Si no coincide → 401, sin cambios.
-4. Hashea newPassword, actualiza el User y revoca las demás Session (deja viva la actual).
+4. Descarta cualquier ChangePasswordVerificationCode pendiente anterior del usuario.
+5. Hashea newPassword (sin aplicarla todavía) y genera un código de 6 dígitos; crea un
+   ChangePasswordVerificationCode con ambos, expiresAt (CHANGE_PASSWORD_CODE_DEFAULT_TIME),
+   used=false y attempts=0.
+6. Envía el código por email vía Resend a la dirección del propio User.
 
-Resultado: Contraseña actualizada y otras sesiones cerradas, o error si la actual no coincide.
+Resultado: Código de verificación enviado por email; la contraseña no cambia hasta el paso 2, o
+error si la actual no coincide.
+
+#### Proceso: Cambiar Contraseña (paso 2 de 2 - confirmar código)
+1. Recibe code, con el token en el header (misma sesión del paso 1).
+2. Busca el ChangePasswordVerificationCode pendiente (used=false) del usuario.
+3. Si no existe → 400. Si expiró → lo invalida (used=true) y 400.
+4. Si el código no coincide → cuenta el intento fallido; al llegar a
+   CHANGE_PASSWORD_CODE_MAX_ATTEMPTS invalida el código (used=true); 401 en ambos casos.
+5. Si coincide, aplica newPasswordHash al User, marca el código used=true y revoca las demás
+   Session (deja viva la actual).
+
+Resultado: Contraseña actualizada y otras sesiones cerradas, o error si no hay un cambio
+pendiente, el código expiró o no coincide.
 
 #### Proceso: Solicitar Recuperación de Contraseña
 1. Recibe el email.

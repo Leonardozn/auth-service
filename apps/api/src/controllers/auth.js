@@ -33,6 +33,7 @@ class AuthController {
 		this.validate = this.validate.bind(this)
 		this.logout = this.logout.bind(this)
 		this.changePassword = this.changePassword.bind(this)
+		this.verifyChangePassword = this.verifyChangePassword.bind(this)
 		this.forgotPassword = this.forgotPassword.bind(this)
 		this.resetPassword = this.resetPassword.bind(this)
 		this.deactivate = this.deactivate.bind(this)
@@ -116,6 +117,20 @@ class AuthController {
 	async changePassword(req, res) {
 		try {
 			const result = await this.accountManagementService.changePassword({ body: req.body, authorizationHeader: req.headers.authorization })
+			const response = this.handleResponseHandler.buildResponse(result)
+
+			res.status(response[this.responseBody.STATUS]).json(response)
+		} catch (error) {
+			console.error(error)
+			const response = this.handleResponseHandler.buildResponse(error)
+
+			res.status(response[this.responseBody.STATUS]).json(response)
+		}
+	}
+
+	async verifyChangePassword(req, res) {
+		try {
+			const result = await this.accountManagementService.verifyChangePassword({ body: req.body, authorizationHeader: req.headers.authorization })
 			const response = this.handleResponseHandler.buildResponse(result)
 
 			res.status(response[this.responseBody.STATUS]).json(response)

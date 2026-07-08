@@ -19,6 +19,9 @@ const SendPasswordResetEmail = require('./commands/sendPasswordResetEmail')
 const FindValidPasswordResetToken = require('./commands/findValidPasswordResetToken')
 const AuthorizeAccountAccess = require('./commands/authorizeAccountAccess')
 const CheckEmailAvailable = require('./commands/checkEmailAvailable')
+const GenerateNumericCode = require('./commands/generateNumericCode')
+const SendChangePasswordVerificationEmail = require('./commands/sendChangePasswordVerificationEmail')
+const FindValidChangePasswordCode = require('./commands/findValidChangePasswordCode')
 
 class AccountManagementService {
 	/**
@@ -48,6 +51,9 @@ class AccountManagementService {
 		this.findValidPasswordResetToken = FindValidPasswordResetToken.getInstance()
 		this.authorizeAccountAccess = AuthorizeAccountAccess.getInstance()
 		this.checkEmailAvailable = CheckEmailAvailable.getInstance()
+		this.generateNumericCode = GenerateNumericCode.getInstance()
+		this.sendChangePasswordVerificationEmail = SendChangePasswordVerificationEmail.getInstance()
+		this.findValidChangePasswordCode = FindValidChangePasswordCode.getInstance()
 	}
 
 	static getInstance() {
@@ -73,11 +79,59 @@ class AccountManagementService {
 		const matches = this.verifyPassword.execute({ dataEncryptHandler: this.dataEncryptHandler, password: currentPassword, hash: user.password })
 		if (!matches) throw new UnauthorizedError('Current password does not match.')
 
-		// Step 3: hash and persist the new password
-		const hashedPassword = await this.hashPassword.execute({ dataEncryptHandler: this.dataEncryptHandler, password: newPassword })
-		await this.userService.update({ id: session.user, body: { password: hashedPassword } })
+		// Step 3: discard any previous pending verification code for this user - only the latest request stays valid
+		await this.deleteResourcesByUser.execute({ repository: this.repository, schemaName: 'change_password_verification_code', userId: session.user })
 
-		// Step 4: revoke every other session, keeping the current one alive
+		// Step 4: pre-hash the new password so it's never stored (or resent) in plain text while the change is pending
+		const newPasswordHash = await this.hashPassword.execute({ dataEncryptHandler: this.dataEncryptHandler, password: newPassword })
+
+		// Step 5: generate a 6-digit verification code and persist it alongside the pending password change
+		const code = this.generateNumericCode.execute()
+		const expiresAt = this.computeExpiryDate.execute({ luxon: this.luxon, duration: envVariables.CHANGE_PASSWORD_CODE_DEFAULT_TIME || '5m' })
+		await this.repository.add('change_password_verification_code', { data: { user: String(session.user), code, newPasswordHash, expiresAt, used: false, attempts: 0 } })
+
+		// Step 6: email the verification code - the caller is already authenticated, so a delivery failure must surface (unlike forgot-password)
+		await this.sendChangePasswordVerificationEmail.execute({
+			emailManagerHandler: this.emailManagerHandler,
+			apiUrl: envVariables.RESEND_API_URL || 'https://api.resend.com/emails',
+			resendToken: envVariables.RESEND_TOKEN,
+			from: envVariables.ADMIN_MAIL_FROM || 'onboarding@resend.dev',
+			to: user.email,
+			code
+		})
+
+		return null
+	}
+
+	async verifyChangePassword(config = {}) {
+		const { code } = this.accountInterface.getVerifyChangePasswordInterface().parse(config.body)
+
+		// Step 1: identify the authenticated user's session from the access token
+		const token = this.extractBearerToken.execute({ authorizationHeader: config.authorizationHeader })
+		const session = await this.findSessionByToken.execute({
+			repository: this.repository,
+			luxon: this.luxon,
+			tokenField: 'accessToken',
+			expiryField: 'accessTokenExpiresAt',
+			token
+		})
+
+		// Step 2: find the pending code for this user, validating it matches, isn't expired, and hasn't exceeded the attempt limit
+		const verification = await this.findValidChangePasswordCode.execute({
+			repository: this.repository,
+			luxon: this.luxon,
+			userId: session.user,
+			code,
+			maxAttempts: Number(envVariables.CHANGE_PASSWORD_CODE_MAX_ATTEMPTS) || 5
+		})
+
+		// Step 3: apply the new password hash that was prepared when the code was requested
+		await this.userService.update({ id: session.user, body: { password: verification.newPasswordHash } })
+
+		// Step 4: mark the verification code as used - it is single-use
+		await this.repository.update('change_password_verification_code', { id: verification._id, data: { used: true } })
+
+		// Step 5: revoke every other session, keeping the current one alive
 		await this.deleteResourcesByUser.execute({ repository: this.repository, schemaName: 'session', userId: session.user, exceptId: session._id })
 
 		return null
