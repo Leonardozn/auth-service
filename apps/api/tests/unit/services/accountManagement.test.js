@@ -28,18 +28,12 @@ async function seedUserWithSession(repository, { password = 'Sup3rSecret!' } = {
 	return { user, session }
 }
 
-test('AccountManagementService.changePassword() — updates the password and revokes other sessions', async () => {
+test('AccountManagementService.changePassword() — emails a verification code without changing the password yet', async () => {
 	const repository = MockRepository.getInstance()
 	const { user, session } = await seedUserWithSession(repository)
-	await repository.add('session', {
-		data: {
-			user: String(user._id),
-			accessToken: 'other-access-token',
-			accessTokenExpiresAt: new Date(),
-			refreshToken: 'other-refresh-token',
-			refreshTokenExpiresAt: new Date()
-		}
-	})
+	const mockEmail = MockEmailManager.getInstance()
+	let capturedSend
+	mockEmail.send = async (config) => { capturedSend = config; return { id: 'mock-email-id' } }
 	const service = AccountManagementService.getInstance()
 
 	const result = await service.changePassword({
@@ -48,14 +42,36 @@ test('AccountManagementService.changePassword() — updates the password and rev
 	})
 
 	assert.equal(result, null)
+	assert.equal(capturedSend.to, 'ada@example.com')
+	assert.match(capturedSend.html, /\b\d{6}\b/)
 
 	const dataEncryptHandler = DataEncryptHandler.getInstance()
-	const updatedUser = await repository.list('user', { query: { _id: String(user._id) } })
-	assert.equal(dataEncryptHandler.verify('NewSecret!', updatedUser.records[0].password), true)
+	const unchangedUser = await repository.list('user', { query: { _id: String(user._id) } })
+	assert.equal(dataEncryptHandler.verify('Sup3rSecret!', unchangedUser.records[0].password), true)
 
 	const sessions = await repository.list('session', { query: {} })
 	assert.equal(sessions.count, 1)
 	assert.equal(sessions.records[0]._id, session._id)
+
+	const codes = await repository.list('change_password_verification_code', { query: { user: String(user._id) } })
+	assert.equal(codes.count, 1)
+	assert.equal(codes.records[0].used, false)
+	assert.equal(codes.records[0].attempts, 0)
+	assert.equal(dataEncryptHandler.verify('NewSecret!', codes.records[0].newPasswordHash), true)
+})
+
+test('AccountManagementService.changePassword() — discards a previous pending code when requested again', async () => {
+	const repository = MockRepository.getInstance()
+	const { user } = await seedUserWithSession(repository)
+	const mockEmail = MockEmailManager.getInstance()
+	mockEmail.send = async () => ({ id: 'mock-email-id' })
+	const service = AccountManagementService.getInstance()
+
+	await service.changePassword({ body: { currentPassword: 'Sup3rSecret!', newPassword: 'FirstAttempt!' }, authorizationHeader: 'Bearer current-access-token' })
+	await service.changePassword({ body: { currentPassword: 'Sup3rSecret!', newPassword: 'SecondAttempt!' }, authorizationHeader: 'Bearer current-access-token' })
+
+	const codes = await repository.list('change_password_verification_code', { query: { user: String(user._id) } })
+	assert.equal(codes.count, 1)
 })
 
 test('AccountManagementService.changePassword() — throws when the current password is wrong', async () => {
@@ -86,6 +102,74 @@ test('AccountManagementService.changePassword() — throws when the access token
 
 	await assert.rejects(
 		() => service.changePassword({ body: { currentPassword: 'a', newPassword: 'b' }, authorizationHeader: 'Bearer missing-token' }),
+		{ name: 'UnauthorizedError' }
+	)
+})
+
+test('AccountManagementService.verifyChangePassword() — applies the pending password and revokes other sessions', async () => {
+	const repository = MockRepository.getInstance()
+	const { user, session } = await seedUserWithSession(repository)
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'other-access-token',
+			accessTokenExpiresAt: new Date(),
+			refreshToken: 'other-refresh-token',
+			refreshTokenExpiresAt: new Date()
+		}
+	})
+	const mockEmail = MockEmailManager.getInstance()
+	let capturedSend
+	mockEmail.send = async (config) => { capturedSend = config; return { id: 'mock-email-id' } }
+	const service = AccountManagementService.getInstance()
+	await service.changePassword({ body: { currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret!' }, authorizationHeader: 'Bearer current-access-token' })
+	const code = capturedSend.html.match(/\b(\d{6})\b/)[1]
+
+	const result = await service.verifyChangePassword({ body: { code }, authorizationHeader: 'Bearer current-access-token' })
+
+	assert.equal(result, null)
+
+	const dataEncryptHandler = DataEncryptHandler.getInstance()
+	const updatedUser = await repository.list('user', { query: { _id: String(user._id) } })
+	assert.equal(dataEncryptHandler.verify('NewSecret!', updatedUser.records[0].password), true)
+
+	const sessions = await repository.list('session', { query: {} })
+	assert.equal(sessions.count, 1)
+	assert.equal(sessions.records[0]._id, session._id)
+
+	const codes = await repository.list('change_password_verification_code', { query: { user: String(user._id) } })
+	assert.equal(codes.records[0].used, true)
+})
+
+test('AccountManagementService.verifyChangePassword() — throws when there is no pending code', async () => {
+	await seedUserWithSession(MockRepository.getInstance())
+	const service = AccountManagementService.getInstance()
+
+	await assert.rejects(
+		() => service.verifyChangePassword({ body: { code: '000000' }, authorizationHeader: 'Bearer current-access-token' }),
+		{ name: 'BadRequestError' }
+	)
+})
+
+test('AccountManagementService.verifyChangePassword() — throws when the code does not match', async () => {
+	const repository = MockRepository.getInstance()
+	await seedUserWithSession(repository)
+	const mockEmail = MockEmailManager.getInstance()
+	mockEmail.send = async () => ({ id: 'mock-email-id' })
+	const service = AccountManagementService.getInstance()
+	await service.changePassword({ body: { currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret!' }, authorizationHeader: 'Bearer current-access-token' })
+
+	await assert.rejects(
+		() => service.verifyChangePassword({ body: { code: '000000' }, authorizationHeader: 'Bearer current-access-token' }),
+		{ name: 'UnauthorizedError' }
+	)
+})
+
+test('AccountManagementService.verifyChangePassword() — throws when the Authorization header is missing', async () => {
+	const service = AccountManagementService.getInstance()
+
+	await assert.rejects(
+		() => service.verifyChangePassword({ body: { code: '000000' }, authorizationHeader: undefined }),
 		{ name: 'UnauthorizedError' }
 	)
 })

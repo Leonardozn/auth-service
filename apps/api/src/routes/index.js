@@ -1,3 +1,4 @@
+const Change_password_verification_codeRouter = require('./change_password_verification_code')
 const Password_reset_tokenRouter = require('./password_reset_token')
 const SessionRouter = require('./session')
 const UserRouter = require('./user')
@@ -6,6 +7,11 @@ const HealthRouter = require('./health')
 const AuthRouter = require('./auth')
 
 class Routes {	/**
+	 * @private
+   */
+	change_password_verification_codeRouter
+
+	/**
 	 * @private
    */
 	password_reset_tokenRouter
@@ -48,6 +54,7 @@ class Routes {	/**
 		this.userRouter = UserRouter.getInstance().getRoutes()
 		this.sessionRouter = SessionRouter.getInstance().getRoutes()
 		this.password_reset_tokenRouter = Password_reset_tokenRouter.getInstance().getRoutes()
+		this.change_password_verification_codeRouter = Change_password_verification_codeRouter.getInstance().getRoutes()
 		this.authRouter = AuthRouter.getInstance().getRoutes()
 	}
 
@@ -58,6 +65,7 @@ class Routes {	/**
 
 	getRoutes() {
 		return {
+			change_password_verification_codeRouter: this.change_password_verification_codeRouter,
 			password_reset_tokenRouter: this.password_reset_tokenRouter,
 			sessionRouter: this.sessionRouter,
 			userRouter: this.userRouter,

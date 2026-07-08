@@ -253,7 +253,7 @@ test('AuthController.logout — returns 401 when the Authorization header is mis
 	})
 })
 
-test('AuthController.changePassword — returns 200 with null content on success', async () => {
+test('AuthController.changePassword — returns 200 with null content and emails a verification code', async () => {
 	const repository = MockRepository.getInstance()
 	const dataEncryptHandler = DataEncryptHandler.getInstance()
 	const { DateTime } = luxon
@@ -267,6 +267,8 @@ test('AuthController.changePassword — returns 200 with null content on success
 			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
 		}
 	})
+	const mockEmail = MockEmailManager.getInstance()
+	mockEmail.send = async () => ({ id: 'mock-email-id' })
 	const controller = AuthController.getInstance()
 	const req = { body: { currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret!' }, headers: { authorization: 'Bearer current-access-token' } }
 	let capturedStatus, capturedBody
@@ -282,6 +284,85 @@ test('AuthController.changePassword — returns 200 with null content on success
 		success: true,
 		message: 'Success!',
 		statusCode: 200,
+		content: null
+	})
+
+	const unchangedUser = await repository.list('user', { query: { _id: String(user._id) } })
+	assert.equal(dataEncryptHandler.verify('Sup3rSecret!', unchangedUser.records[0].password), true)
+})
+
+test('AuthController.verifyChangePassword — returns 200 with null content and applies the pending password', async () => {
+	const repository = MockRepository.getInstance()
+	const dataEncryptHandler = DataEncryptHandler.getInstance()
+	const { DateTime } = luxon
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: dataEncryptHandler.encrypt('Sup3rSecret!'), role: '64b0c0ffee1234567890abcd' } })
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'current-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'current-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const mockEmail = MockEmailManager.getInstance()
+	let capturedSend
+	mockEmail.send = async (config) => { capturedSend = config; return { id: 'mock-email-id' } }
+	const controller = AuthController.getInstance()
+	const changeReq = { body: { currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret!' }, headers: { authorization: 'Bearer current-access-token' } }
+	const noopRes = { status() { return this }, json() { return this } }
+	await controller.changePassword(changeReq, noopRes)
+	const code = capturedSend.html.match(/\b(\d{6})\b/)[1]
+
+	const req = { body: { code }, headers: { authorization: 'Bearer current-access-token' } }
+	let capturedStatus, capturedBody
+	const res = {
+		status(code) { capturedStatus = code; return this },
+		json(body)   { capturedBody  = body;  return this },
+	}
+
+	await controller.verifyChangePassword(req, res)
+
+	assert.equal(capturedStatus, 200)
+	assert.deepEqual(capturedBody, {
+		success: true,
+		message: 'Success!',
+		statusCode: 200,
+		content: null
+	})
+
+	const updatedUser = await repository.list('user', { query: { _id: String(user._id) } })
+	assert.equal(dataEncryptHandler.verify('NewSecret!', updatedUser.records[0].password), true)
+})
+
+test('AuthController.verifyChangePassword — returns 400 when there is no pending code', async () => {
+	const repository = MockRepository.getInstance()
+	const { DateTime } = luxon
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'current-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'current-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const controller = AuthController.getInstance()
+	const req = { body: { code: '000000' }, headers: { authorization: 'Bearer current-access-token' } }
+	let capturedStatus, capturedBody
+	const res = {
+		status(code) { capturedStatus = code; return this },
+		json(body)   { capturedBody  = body;  return this },
+	}
+
+	await controller.verifyChangePassword(req, res)
+
+	assert.equal(capturedStatus, 400)
+	assert.deepEqual(capturedBody, {
+		success: false,
+		message: 'No pending password change request.',
+		statusCode: 400,
 		content: null
 	})
 })

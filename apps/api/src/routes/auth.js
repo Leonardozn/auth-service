@@ -169,8 +169,15 @@ const AuthController = require('../controllers/auth')
  * /auth/change-password:
  *   post:
  *     tags: [Auth]
- *     summary: Change the caller's own password
- *     description: Revokes every other session for the account, keeping the current one alive.
+ *     summary: Request a password change - step 1 of 2 (sends a verification code by email)
+ *     description: |
+ *       Verifies `currentPassword`, then emails a 6-digit verification code to the account's own
+ *       address instead of applying the change immediately - confirm it with
+ *       `POST /auth/change-password/verify` to actually update the password. The new password is
+ *       pre-hashed and held on the pending record so it never needs to be resent. Requesting a new
+ *       code invalidates any previous still-pending one for the account. The code expires after
+ *       `CHANGE_PASSWORD_CODE_DEFAULT_TIME` and accepts at most `CHANGE_PASSWORD_CODE_MAX_ATTEMPTS`
+ *       wrong guesses before it must be requested again.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -186,7 +193,7 @@ const AuthController = require('../controllers/auth')
  *           example: { currentPassword: "Sup3rSecret!", newPassword: "NewSecret!" }
  *     responses:
  *       200:
- *         description: Password changed
+ *         description: Verification code sent to the account's email - the password has not changed yet
  *         content:
  *           application/json:
  *             example: { success: true, message: "Success!", statusCode: 200, content: null }
@@ -195,6 +202,48 @@ const AuthController = require('../controllers/auth')
  *         content:
  *           application/json:
  *             example: { success: false, message: "Current password does not match.", statusCode: 401, content: null }
+ *       500:
+ *         description: Unexpected server error (includes a failure to send the verification email)
+ *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
+ *
+ * /auth/change-password/verify:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Confirm a password change - step 2 of 2 (verifies the emailed code)
+ *     description: |
+ *       Consumes the 6-digit code emailed by `POST /auth/change-password`, applies the pending
+ *       (already-hashed) new password, and revokes every other session for the account, keeping
+ *       the current one alive. A wrong code counts as a failed attempt; once
+ *       `CHANGE_PASSWORD_CODE_MAX_ATTEMPTS` is reached the pending code is invalidated and a new
+ *       one must be requested via `POST /auth/change-password`.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [code]
+ *             properties:
+ *               code: { type: string }
+ *           example: { code: "482913" }
+ *     responses:
+ *       200:
+ *         description: Password changed
+ *         content:
+ *           application/json:
+ *             example: { success: true, message: "Success!", statusCode: 200, content: null }
+ *       400:
+ *         description: No pending password change for this account, or the code is invalid/expired
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Invalid or expired verification code.", statusCode: 400, content: null }
+ *       401:
+ *         description: Missing/malformed/expired Authorization header, or the submitted code does not match (counts as a failed attempt)
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Invalid verification code.", statusCode: 401, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
@@ -314,6 +363,7 @@ class AuthRouter {
 				{ requestMethod: 'post', path: '/validate', controllerMethod: this.authController.validate },
 				{ requestMethod: 'post', path: '/logout', controllerMethod: this.authController.logout },
 				{ requestMethod: 'post', path: '/change-password', controllerMethod: this.authController.changePassword },
+				{ requestMethod: 'post', path: '/change-password/verify', controllerMethod: this.authController.verifyChangePassword },
 				{ requestMethod: 'post', path: '/forgot-password', controllerMethod: this.authController.forgotPassword },
 				{ requestMethod: 'post', path: '/reset-password', controllerMethod: this.authController.resetPassword },
 				{ requestMethod: 'post', path: '/deactivate', controllerMethod: this.authController.deactivate }
