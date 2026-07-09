@@ -111,7 +111,11 @@ debe seguir para autorizar solicitudes. Ningún otro servicio interpreta el toke
    renueva con el refresh token vía `POST /auth/refresh` (no reenvía credenciales).
 3. Un servicio protegido (cv-service) reenvía el access token a `POST /auth/validate`; nunca lo
    decodifica.
-4. auth-service responde con el `User` autenticado (incluyendo `role`) si es válido, o 401.
+4. auth-service responde con el `User` autenticado (incluyendo `role`) si es válido, o 401. En la
+   respuesta de `/auth/validate` el `role` se resuelve al **nombre** del Role (`"user"`/`"admin"`),
+   no a su id — es el campo del que depende la autorización por rol del consumidor. (En cambio,
+   `/auth/login`, `/auth/register` y `/auth/refresh` devuelven `user.role` como el **id** del Role;
+   un cliente que necesite el nombre lo resuelve con `GET /role/:id`.)
 5. El servicio llamador usa el `user` y su `role` para autorizar a nivel de recurso/ruta (RBAC:
    admin es superconjunto de user).
 6. Ante token ausente/inválido/expirado o auth-service caído, se falla cerrado.
@@ -159,7 +163,9 @@ commitea — su valor se toma del entorno al crear el evar). Los tiempos usan fo
 - `POST /auth/validate` (acción personalizada; base del Protocolo de autenticación)
 - Request: `{ token: <string> }`
 - Respuesta: `{ ..., content: { user: <User> } }` si el token es válido y no expiró; `content:
-  null` con 401 en caso contrario.
+  null` con 401 en caso contrario. En este contrato (a diferencia de login/register/refresh)
+  `user.role` se devuelve como el **nombre** del Role (`"user"`/`"admin"`), no como su id, para que
+  el consumidor pueda autorizar por rol directamente (`role === 'admin'`).
 - Failure handling: caller (cv-service) reintenta una vez a los 5s; este servicio solo debe
   responder rápido y de forma determinista.
 
