@@ -11,6 +11,7 @@
     "@auth-service/server-configuration": "*",
     "@auth-service/cors-policy": "*",
     "@auth-service/request-logger": "*",
+    "@auth-service/analytics-manager": "*",
     "@auth-service/env-variables": "*",
     "@auth-service/prototypes": "*",
     "@auth-service/handle-response": "*",

@@ -14,6 +14,9 @@ const RequestLoggerHandler = require('./src/handlers/requestLogger')
 const requestLogger = RequestLoggerHandler.getInstance()
 const modes = requestLogger.getModes()
 
+const AnalyticsManagerHandler = require('./src/handlers/analyticsManager')
+const analytics = AnalyticsManagerHandler.getInstance()
+
 const FileManagerHandler = require('./src/handlers/fileManager')
 const fileManager = FileManagerHandler.getInstance()
 const path = require('path')
@@ -33,6 +36,12 @@ server.setSingleSetting(corsPolicy.getPolicy())
 server.setRequestBodyOptions({ limit: '10mb' })
 
 server.setSingleSetting(requestLogger.getLogger(modes.DEV))
+
+// Records HTTP RED metrics for every request; must sit before the routers so it wraps them all.
+server.setSingleSetting(analytics.getMiddleware())
+
+// Exposes GET /metrics for Prometheus to scrape (public, outside the API router).
+analytics.setupMetricsEndpoint(server.app)
 
 const DocumentationConfigHandler = require('./src/handlers/documentationConfig')
 const documentationHandler = DocumentationConfigHandler.getInstance()
