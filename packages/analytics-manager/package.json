@@ -1,0 +1,9 @@
+{
+	"name": "@auth-service/analytics-manager",
+	"version": "1.0.0",
+	"description": "Generic Prometheus metrics for any backend microservice (default process metrics + HTTP RED metrics), via prom-client.",
+	"main": "index",
+	"dependencies": {
+		"prom-client": "15.1.3"
+	}
+}
