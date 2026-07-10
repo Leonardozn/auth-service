@@ -1,0 +1,28 @@
+# Dependencies (reinstalled inside the image)
+node_modules
+**/node_modules
+
+# Git / hooks
+.git
+.gitignore
+.githooks
+.github
+
+# Secrets and local config (config is injected as env vars at runtime)
+.env
+.env.*
+settings.json
+ui-settings.json
+
+# Local runtime artifacts
+api-uploads
+coverage
+*.log
+npm-debug.log*
+
+# Editor / tooling / docs not needed in the image
+.claude
+.vscode
+*.md
+Dockerfile
+.dockerignore
