@@ -21,6 +21,9 @@ const FileManagerHandler = require('./src/handlers/fileManager')
 const fileManager = FileManagerHandler.getInstance()
 const path = require('path')
 
+const RateLimiterHandler = require('./src/handlers/rateLimiter')
+const rateLimiter = RateLimiterHandler.getInstance()
+
 const envVarsHandler = require('./src/handlers/envVariables')
 
 const port = envVarsHandler.API_PORT
@@ -30,6 +33,10 @@ const protocol = isDev ? 'http' : 'https'
 const hostUrl = isDev ? `${host}:${port}` : host
 
 const server = new serverConfiguration()
+
+// Behind Railway/nginx the client IP arrives in X-Forwarded-For; trust the single proxy hop so the
+// rate limiter keys on the real client IP (not the proxy's, which would lump everyone together).
+server.app.set('trust proxy', 1)
 
 server.setSingleSetting(corsPolicy.getPolicy())
 
@@ -63,12 +70,26 @@ const staticPath = envVarsHandler.API_UPLOAD_PATH || path.join(process.cwd(), 'a
 
 server.setStaticPublicFolder(`${envVarsHandler.API_PATH}/files`, staticPath)
 
+// Global baseline rate limit on the API router (mounted here so /metrics, Swagger UI and the static
+// folder, all registered above, are exempt). A generous per-IP cap that only bites crude abuse.
+server.setSingleSetting(rateLimiter.getBaselineLimiter())
+
 const middlewares = []
 
 if (uploadPaths.length > 0) {
 	middlewares.push({
 		includeInPaths: uploadPaths,
 		methods: [fileManager.getMiddleware().any()]
+	})
+}
+
+// Strict rate limit on the sensitive, unauthenticated auth endpoints (credential brute-force and
+// email/account-creation abuse). A fresh limiter per path so each gets its own per-IP budget.
+const strictAuthPaths = ['/auth/register', '/auth/login', '/auth/forgot-password', '/auth/reset-password']
+for (const strictPath of strictAuthPaths) {
+	middlewares.push({
+		includeInPaths: [{ name: strictPath, method: 'post' }],
+		methods: [rateLimiter.getStrictLimiter()]
 	})
 }
 
