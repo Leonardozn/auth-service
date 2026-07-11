@@ -70,3 +70,50 @@ test('AnalyticsManagerHandler is a singleton exposing the middleware and default
 	assert.equal(typeof a.getMiddleware(), 'function')
 	assert.equal(a.getMetricsRoute(), '/metrics')
 })
+
+// Mounts setupMetricsEndpoint on a fake Express app, captures the scrape handler, and drives one
+// request through it. Returns the status/headers/body the handler produced.
+async function scrape(manager, headers = {}) {
+	let handler
+	manager.setupMetricsEndpoint({ get: (route, routeHandler) => { handler = routeHandler } })
+
+	const captured = { status: 200, headers: {}, body: '' }
+	const res = {
+		status(code) { captured.status = code; return res },
+		set(key, value) { captured.headers[key.toLowerCase()] = value; return res },
+		end(payload) { if (payload !== undefined) captured.body = payload }
+	}
+	await handler({ headers }, res)
+	return captured
+}
+
+test('AnalyticsManager scrape endpoint stays public when no token is configured', async () => {
+	const manager = new AnalyticsManager({ collectDefault: false })
+
+	const res = await scrape(manager)
+	assert.equal(res.status, 200)
+	assert.match(res.headers['content-type'], /text\/plain/)
+})
+
+test('AnalyticsManager scrape endpoint returns 401 without the configured token', async () => {
+	const manager = new AnalyticsManager({ collectDefault: false, metricsToken: 'secret' })
+
+	const res = await scrape(manager)
+	assert.equal(res.status, 401)
+	assert.equal(res.headers['www-authenticate'], 'Bearer')
+})
+
+test('AnalyticsManager scrape endpoint returns 401 with a wrong token', async () => {
+	const manager = new AnalyticsManager({ collectDefault: false, metricsToken: 'secret' })
+
+	const res = await scrape(manager, { authorization: 'Bearer nope' })
+	assert.equal(res.status, 401)
+})
+
+test('AnalyticsManager scrape endpoint serves metrics with the matching token', async () => {
+	const manager = new AnalyticsManager({ collectDefault: false, metricsToken: 'secret' })
+
+	const res = await scrape(manager, { authorization: 'Bearer secret' })
+	assert.equal(res.status, 200)
+	assert.match(res.headers['content-type'], /text\/plain/)
+})

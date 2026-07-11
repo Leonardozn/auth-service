@@ -19,7 +19,8 @@ class AnalyticsManagerHandler {
 	constructor() {
 		this.analyticsManager = new AnalyticsManager({
 			prefix: envVars.METRICS_PREFIX || '',
-			metricsRoute: envVars.METRICS_ROUTE || '/metrics'
+			metricsRoute: envVars.METRICS_ROUTE || '/metrics',
+			metricsToken: envVars.METRICS_TOKEN || ''
 		})
 	}
 
@@ -36,13 +37,11 @@ class AnalyticsManagerHandler {
 		return this.analyticsManager.getMetricsRoute()
 	}
 
-	// Mounts the scrape endpoint (GET <metricsRoute>) directly on the Express app, outside the
-	// API router, so it stays public for Prometheus and free of the per-route auth checks.
+	// Mounts the scrape endpoint (GET <metricsRoute>) on the Express app, outside the API router.
+	// The package owns the route and its optional token guard (public by default, 401 when a
+	// METRICS_TOKEN is configured and the scrape sends no/!matching bearer token).
 	setupMetricsEndpoint(app) {
-		app.get(this.analyticsManager.getMetricsRoute(), async (req, res) => {
-			res.set('Content-Type', this.analyticsManager.getContentType())
-			res.end(await this.analyticsManager.getMetrics())
-		})
+		this.analyticsManager.setupMetricsEndpoint(app)
 	}
 }
 
