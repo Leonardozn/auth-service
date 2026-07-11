@@ -14,13 +14,15 @@ class FileManagerHandler {
 
 	/**
 	 * @private
+	 * @param { Object } [settings] - Forwarded to FileManager. `settings.uploadPath` (absolute) is
+	 *   the destination folder, computed once in index.js so writes and static serving share it.
 	 */
-	constructor() {
-		this.fileManager = new FileManager({}, 'api')
+	constructor(settings = {}) {
+		this.fileManager = new FileManager(settings, 'api')
 	}
 
-	static getInstance() {
-		if (!this.instance) this.instance = new FileManagerHandler()
+	static getInstance(settings = {}) {
+		if (!this.instance) this.instance = new FileManagerHandler(settings)
 		return this.instance
 	}
 
