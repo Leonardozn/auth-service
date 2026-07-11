@@ -1,0 +1,9 @@
+{
+	"name": "@auth-service/rate-limiter",
+	"version": "1.0.0",
+	"description": "Request rate limiting.",
+	"main": "index",
+	"dependencies": {
+		"express-rate-limit": "7.5.1"
+	}
+}
