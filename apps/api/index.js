@@ -24,6 +24,9 @@ const path = require('path')
 const RateLimiterHandler = require('./src/handlers/rateLimiter')
 const rateLimiter = RateLimiterHandler.getInstance()
 
+const SecurityHeadersHandler = require('./src/handlers/securityHeaders')
+const securityHeaders = SecurityHeadersHandler.getInstance()
+
 const envVarsHandler = require('./src/handlers/envVariables')
 
 const port = envVarsHandler.API_PORT
@@ -37,6 +40,9 @@ const server = new serverConfiguration()
 // Behind Railway/nginx the client IP arrives in X-Forwarded-For; trust the single proxy hop so the
 // rate limiter keys on the real client IP (not the proxy's, which would lump everyone together).
 server.app.set('trust proxy', 1)
+
+// Security response headers first, so every response (API, Swagger UI, static) carries them.
+server.setSingleSetting(securityHeaders.getMiddleware())
 
 server.setSingleSetting(corsPolicy.getPolicy())
 
