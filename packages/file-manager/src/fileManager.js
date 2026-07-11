@@ -5,6 +5,13 @@ const fs = require('fs')
 
 const LocalStorageStrategy = require('./strategies/localStorageStrategy')
 
+// Service root, anchored to this package's on-disk location (packages/file-manager/src), NOT
+// process.cwd(). It's the fallback base for the uploads folder when neither the caller nor the env
+// provides an absolute path, so the folder is always at <service-root>/<app>-uploads regardless of
+// the directory the process was launched from (running from the root vs. from apps/api used to
+// scatter two separate api-uploads folders).
+const SERVICE_ROOT = path.resolve(__dirname, '..', '..', '..')
+
 class FileManager {
 	/**
 	 * @private
@@ -16,10 +23,22 @@ class FileManager {
 	 */
 	storageStrategy
 
-	constructor(settings = {}, appName) {
-if (!appName) throw new Error('App name is required to initialize FileManager')
+	/**
+	 * @private
+	 */
+	destinationPath
 
-		const isS3 = envVariables[`${appName.toUpperCase().replaceAll('-', '_')}_UPLOAD_PATH`] && envVariables[`${appName.toUpperCase().replaceAll('-', '_')}_UPLOAD_PATH`].startsWith('s3://')
+	constructor(settings = {}, appName) {
+		if (!appName) throw new Error('App name is required to initialize FileManager')
+
+		const envPrefix = appName.toUpperCase().replaceAll('-', '_')
+
+		// Destination resolution — single source of truth is the app's index.js, which computes the
+		// absolute path and passes it as settings.uploadPath. Priority: explicit setting > env
+		// (`<APP>_UPLOAD_PATH`) > `<service-root>/<app>-uploads`.
+		const destinationPath = settings.uploadPath || envVariables[`${envPrefix}_UPLOAD_PATH`] || path.join(SERVICE_ROOT, `${appName.toLowerCase()}-uploads`)
+
+		const isS3 = typeof destinationPath === 'string' && destinationPath.startsWith('s3://')
 
 		let storage
 
@@ -27,15 +46,14 @@ if (!appName) throw new Error('App name is required to initialize FileManager')
 			// FIXME: Implementation of S3 strategy will go here
 			throw new Error('S3 Storage Strategy not implemented yet')
 		} else {
-			const destinationPath = envVariables[`${appName.toUpperCase().replaceAll('-', '_')}_UPLOAD_PATH`] || path.join(process.cwd(), `${appName.toLowerCase()}-uploads`)
-			
-			if (!fs.existsSync(destinationPath)) {
-				fs.mkdirSync(destinationPath, { recursive: true })
-			}
-			
+			// Kept so the directory can be created lazily (see _ensureDestination), only when an upload
+			// middleware is actually mounted — a service that never uploads should not create an empty
+			// folder just by wiring the handler.
+			this.destinationPath = destinationPath
+
 			storage = multer.diskStorage({
-				destination: function (req, file, cb) {
-					cb(null, destinationPath)
+				destination: (req, file, cb) => {
+					cb(null, this.destinationPath)
 				},
 				filename: function (req, file, cb) {
 					const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
@@ -68,7 +86,17 @@ if (!appName) throw new Error('App name is required to initialize FileManager')
 		this.uploadMiddleware = multer(multerOptions)
 	}
 
+	// Creates the destination folder on first use rather than at construction, so only a service that
+	// actually mounts an upload middleware materializes the folder. No-op for the S3 strategy (no
+	// local destinationPath) and idempotent.
+	_ensureDestination() {
+		if (this.destinationPath && !fs.existsSync(this.destinationPath)) {
+			fs.mkdirSync(this.destinationPath, { recursive: true })
+		}
+	}
+
 	getMiddleware() {
+		this._ensureDestination()
 		return this.uploadMiddleware
 	}
 

@@ -18,7 +18,6 @@ const AnalyticsManagerHandler = require('./src/handlers/analyticsManager')
 const analytics = AnalyticsManagerHandler.getInstance()
 
 const FileManagerHandler = require('./src/handlers/fileManager')
-const fileManager = FileManagerHandler.getInstance()
 const path = require('path')
 
 const RateLimiterHandler = require('./src/handlers/rateLimiter')
@@ -28,6 +27,15 @@ const SecurityHeadersHandler = require('./src/handlers/securityHeaders')
 const securityHeaders = SecurityHeadersHandler.getInstance()
 
 const envVarsHandler = require('./src/handlers/envVariables')
+
+// Uploads folder anchored to the service root (this file lives at apps/api/index.js), NOT
+// process.cwd(), so it's deterministic regardless of where the process is launched from. This one
+// value is the single source of truth: it's both served as static (below) and handed to
+// file-manager for writes, so reads and writes can never point at different folders.
+const serviceRoot = path.resolve(__dirname, '..', '..')
+const uploadPath = envVarsHandler.API_UPLOAD_PATH || path.join(serviceRoot, 'api-uploads')
+
+const fileManager = FileManagerHandler.getInstance({ uploadPath })
 
 const port = envVarsHandler.API_PORT
 const host = envVarsHandler.API_HOST
@@ -72,9 +80,7 @@ documentationHandler.setupSwaggerUI(server.app, '/api-docs')
 let uploadPaths = envVarsHandler.API_UPLOAD_INCLUDE_PATHS ? envVarsHandler.API_UPLOAD_INCLUDE_PATHS.split(',') : []
 uploadPaths = uploadPaths.map(path => ({ name: path.trim(), method: '*' }))
 
-const staticPath = envVarsHandler.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
-
-server.setStaticPublicFolder(`${envVarsHandler.API_PATH}/files`, staticPath)
+server.setStaticPublicFolder(`${envVarsHandler.API_PATH}/files`, uploadPath)
 
 // Global baseline rate limit on the API router (mounted here so /metrics, Swagger UI and the static
 // folder, all registered above, are exempt). A generous per-IP cap that only bites crude abuse.
