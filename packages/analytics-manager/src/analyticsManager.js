@@ -1,4 +1,7 @@
 const client = require('prom-client')
+const crypto = require('crypto')
+
+const BEARER_PATTERN = /^Bearer (.+)$/i
 
 // Latency buckets (seconds) — a generic spread that covers fast in-memory handlers up to
 // slow upstream/IO calls; override via options.buckets for a service with different SLOs.
@@ -19,10 +22,14 @@ class AnalyticsManager {
 	 * @param { number[] } [options.buckets] - Histogram buckets (seconds) for request duration.
 	 * @param { Object } [options.defaultLabels] - Labels attached to every metric (rarely needed;
 	 *   Prometheus usually adds `job`/`instance` at scrape time).
+	 * @param { string } [options.metricsToken=''] - Static bearer token the scrape endpoint requires.
+	 *   Empty (the default) leaves the endpoint public; set it to gate `/metrics` behind
+	 *   `Authorization: Bearer <token>` (matches Prometheus's `bearer_token` scrape option).
 	 */
 	constructor(options = {}) {
 		const prefix = options.prefix || ''
 		this.metricsRoute = options.metricsRoute || '/metrics'
+		this.metricsToken = options.metricsToken || ''
 		this.register = new client.Registry()
 
 		if (options.defaultLabels) this.register.setDefaultLabels(options.defaultLabels)
@@ -98,6 +105,36 @@ class AnalyticsManager {
 
 	getMetricsRoute() {
 		return this.metricsRoute
+	}
+
+	// True when the request may read the metrics: always so if no token is configured (public by
+	// default), otherwise only with a matching `Authorization: Bearer <token>`. The comparison is
+	// constant-time to avoid leaking the token through response timing.
+	_isAuthorized(req) {
+		if (!this.metricsToken) return true
+
+		const header = req.headers && req.headers.authorization
+		const match = typeof header === 'string' && header.match(BEARER_PATTERN)
+		if (!match) return false
+
+		const provided = Buffer.from(match[1])
+		const expected = Buffer.from(this.metricsToken)
+		return provided.length === expected.length && crypto.timingSafeEqual(provided, expected)
+	}
+
+	// Mounts the scrape endpoint (GET <metricsRoute>) on the given Express app, outside the API
+	// router. Public by default; when a metricsToken is configured, an unauthenticated scrape gets
+	// 401. Kept in the package (not the app handler) so the endpoint and its guard travel together.
+	setupMetricsEndpoint(app) {
+		app.get(this.metricsRoute, async (req, res) => {
+			if (!this._isAuthorized(req)) {
+				res.status(401).set('WWW-Authenticate', 'Bearer').end()
+				return
+			}
+
+			res.set('Content-Type', this.getContentType())
+			res.end(await this.getMetrics())
+		})
 	}
 
 	// Escape hatch for registering extra custom metrics on the same registry.
