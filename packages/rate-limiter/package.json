@@ -4,6 +4,8 @@
 	"description": "Request rate limiting.",
 	"main": "index",
 	"dependencies": {
-		"express-rate-limit": "7.5.1"
+		"express-rate-limit": "7.5.1",
+		"@auth-service/handle-errors": "*",
+		"@auth-service/handle-response": "*"
 	}
 }
