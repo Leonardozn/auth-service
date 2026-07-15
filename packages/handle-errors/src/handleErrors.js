@@ -5,6 +5,7 @@ const HttpStatus = {
 	UNAUTHORIZED: 401,
 	FORBIDDEN: 403,
 	NOT_FOUND: 404,
+	TOO_MANY_REQUESTS: 429,
 	INTERNAL_SERVER: 500,
 	BAD_GATEWAY: 502
 }
@@ -15,6 +16,7 @@ const ErrorNames = {
 	UNAUTHORIZED_ERROR: 'UnauthorizedError',
 	FORBIDDEN_ERROR: 'ForbiddenError',
 	NOT_FOUND_ERROR: 'NotFoundError',
+	TOO_MANY_REQUESTS_ERROR: 'TooManyRequestsError',
 	INTERNAL_SERVER_ERROR: 'InternalServerError'
 }
 
@@ -62,6 +64,17 @@ class NotFoundError extends Error {
 	}
 }
 
+class TooManyRequestsError extends Error {
+	/**
+	 * @param {string} message - Error message
+	 */
+	constructor(message='Too many requests error.') {
+		super(message)
+		this.name = ErrorNames.TOO_MANY_REQUESTS_ERROR
+		this.status = HttpStatus.TOO_MANY_REQUESTS
+	}
+}
+
 class InternalServerError extends Error {
 	/**
 	 * @param {string} message - Error message
@@ -80,5 +93,6 @@ module.exports ={
 	UnauthorizedError,
 	ForbiddenError,
 	NotFoundError,
+	TooManyRequestsError,
 	InternalServerError
 }

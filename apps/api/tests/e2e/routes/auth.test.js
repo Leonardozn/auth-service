@@ -294,8 +294,52 @@ test('auth routes — POST /auth/logout rejects a missing Authorization header',
 	}
 })
 
-test('auth routes — POST /auth/change-password updates the password and revokes other sessions', async () => {
-	const app = await runApp(seededRoleEnv())
+test('auth routes — POST /auth/change-password emails a verification code without changing the password yet', async () => {
+	const captureFile = path.join(os.tmpdir(), `change-password-capture-${Date.now()}.json`)
+	const app = await runApp({ ...seededRoleEnv(), MOCK_EMAIL_CAPTURE_FILE: captureFile })
+
+	try {
+		await app.request('POST', `${app.path}/auth/register`, {
+			name: 'Ada',
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+		const loginRes = await app.request('POST', `${app.path}/auth/login`, {
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+
+		const changeRes = await app.request(
+			'POST',
+			`${app.path}/auth/change-password`,
+			{ currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret!' },
+			{ Authorization: `Bearer ${loginRes.body.content.token}` }
+		)
+
+		assert.equal(changeRes.status, 200)
+		assert.deepEqual(changeRes.body, {
+			success: true,
+			message: 'Success!',
+			statusCode: 200,
+			content: null
+		})
+
+		const sent = JSON.parse(fs.readFileSync(captureFile, 'utf8'))
+		assert.equal(sent.to, 'ada@example.com')
+		assert.match(sent.html, /\b\d{6}\b/)
+
+		// the password has not changed yet
+		const oldLogin = await app.request('POST', `${app.path}/auth/login`, { email: 'ada@example.com', password: 'Sup3rSecret!' })
+		assert.equal(oldLogin.status, 200)
+	} finally {
+		await app.stop()
+		fs.rmSync(captureFile, { force: true })
+	}
+})
+
+test('auth routes — POST /auth/change-password/verify applies the pending password and revokes other sessions', async () => {
+	const captureFile = path.join(os.tmpdir(), `change-password-verify-capture-${Date.now()}.json`)
+	const app = await runApp({ ...seededRoleEnv(), MOCK_EMAIL_CAPTURE_FILE: captureFile })
 
 	try {
 		await app.request('POST', `${app.path}/auth/register`, {
@@ -311,16 +355,24 @@ test('auth routes — POST /auth/change-password updates the password and revoke
 			email: 'ada@example.com',
 			password: 'Sup3rSecret!'
 		})
-
-		const changeRes = await app.request(
+		await app.request(
 			'POST',
 			`${app.path}/auth/change-password`,
 			{ currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret!' },
 			{ Authorization: `Bearer ${firstLogin.body.content.token}` }
 		)
+		const sent = JSON.parse(fs.readFileSync(captureFile, 'utf8'))
+		const code = sent.html.match(/\b(\d{6})\b/)[1]
 
-		assert.equal(changeRes.status, 200)
-		assert.deepEqual(changeRes.body, {
+		const verifyRes = await app.request(
+			'POST',
+			`${app.path}/auth/change-password/verify`,
+			{ code },
+			{ Authorization: `Bearer ${firstLogin.body.content.token}` }
+		)
+
+		assert.equal(verifyRes.status, 200)
+		assert.deepEqual(verifyRes.body, {
 			success: true,
 			message: 'Success!',
 			statusCode: 200,
@@ -342,6 +394,48 @@ test('auth routes — POST /auth/change-password updates the password and revoke
 		assert.equal(newLogin.status, 200)
 	} finally {
 		await app.stop()
+		fs.rmSync(captureFile, { force: true })
+	}
+})
+
+test('auth routes — POST /auth/change-password/verify rejects a wrong code', async () => {
+	const captureFile = path.join(os.tmpdir(), `change-password-verify-wrong-capture-${Date.now()}.json`)
+	const app = await runApp({ ...seededRoleEnv(), MOCK_EMAIL_CAPTURE_FILE: captureFile })
+
+	try {
+		await app.request('POST', `${app.path}/auth/register`, {
+			name: 'Ada',
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+		const loginRes = await app.request('POST', `${app.path}/auth/login`, {
+			email: 'ada@example.com',
+			password: 'Sup3rSecret!'
+		})
+		await app.request(
+			'POST',
+			`${app.path}/auth/change-password`,
+			{ currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret!' },
+			{ Authorization: `Bearer ${loginRes.body.content.token}` }
+		)
+
+		const res = await app.request(
+			'POST',
+			`${app.path}/auth/change-password/verify`,
+			{ code: '000000' },
+			{ Authorization: `Bearer ${loginRes.body.content.token}` }
+		)
+
+		assert.equal(res.status, 401)
+		assert.deepEqual(res.body, {
+			success: false,
+			message: 'Invalid verification code.',
+			statusCode: 401,
+			content: null
+		})
+	} finally {
+		await app.stop()
+		fs.rmSync(captureFile, { force: true })
 	}
 })
 

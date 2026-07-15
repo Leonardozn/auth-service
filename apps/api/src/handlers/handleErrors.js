@@ -5,6 +5,7 @@ const {
 	UnauthorizedError,
 	ForbiddenError,
 	NotFoundError,
+	TooManyRequestsError,
 	InternalServerError
 } = require('@auth-service/handle-errors')
 
@@ -15,5 +16,6 @@ module.exports = {
 	UnauthorizedError,
 	ForbiddenError,
 	NotFoundError,
+	TooManyRequestsError,
 	InternalServerError
 }

@@ -30,6 +30,11 @@ class AccountManagementInterfaces {
 	/**
 	 * @private
 	 */
+	verifyChangePasswordInterface
+
+	/**
+	 * @private
+	 */
 	editProfileInterface
 
 	/**
@@ -55,6 +60,10 @@ class AccountManagementInterfaces {
 			newPassword: { type: this.types.string }
 		})
 
+		this.verifyChangePasswordInterface = this.dataValidatorHandler.validate({
+			code: { type: this.types.string }
+		})
+
 		this.editProfileInterface = this.dataValidatorHandler.validate({
 			name: { type: this.types.string, optional: true },
 			email: { type: this.types.string, optional: true },
@@ -77,6 +86,10 @@ class AccountManagementInterfaces {
 
 	getResetPasswordInterface() {
 		return this.resetPasswordInterface
+	}
+
+	getVerifyChangePasswordInterface() {
+		return this.verifyChangePasswordInterface
 	}
 
 	getEditProfileInterface() {
