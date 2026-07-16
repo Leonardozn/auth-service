@@ -25,7 +25,7 @@ const AuthController = require('../controllers/auth')
  *             properties:
  *               name: { type: string }
  *               email: { type: string }
- *               password: { type: string }
+ *               password: { type: string, description: 'Minimum 8 characters, at least one uppercase letter, one number, and one special character (!"#$%&''()*+,-./:;<=>?@[\]^_`{|}~).' }
  *           example: { name: "Ada", email: "ada@example.com", password: "Sup3rSecret!" }
  *     responses:
  *       201:
@@ -35,9 +35,11 @@ const AuthController = require('../controllers/auth')
  *             example: { success: true, message: "Success!", statusCode: 201, content: { user: { _id: "28ea21407ef7a29c2ffbe909", name: "Ada", email: "ada@example.com", role: "64b0c0ffee1234567890abee", active: true } } }
  *       400:
  *         description: |
- *           Either the email is already registered, or a validation error (missing/invalid
- *           field - Zod's generic "Invalid input" with the issue(s) in `content`; `message`
- *           and `content` become arrays when more than one field is invalid).
+ *           The email is already registered, the password does not meet the required policy
+ *           (minimum 8 characters, one uppercase letter, one number, one special character), or a
+ *           validation error (missing/invalid field - Zod's generic "Invalid input" with the
+ *           issue(s) in `content`; `message` and `content` become arrays when more than one field
+ *           is invalid).
  *         content:
  *           application/json:
  *             example: { success: false, message: ["Invalid input", "Invalid input"], statusCode: 400, content: [{ code: "invalid_type", expected: "string", received: "undefined", path: ["email"], message: "Required" }, { code: "invalid_type", expected: "string", received: "undefined", path: ["password"], message: "Required" }] }
@@ -189,14 +191,19 @@ const AuthController = require('../controllers/auth')
  *             required: [currentPassword, newPassword]
  *             properties:
  *               currentPassword: { type: string }
- *               newPassword: { type: string }
- *           example: { currentPassword: "Sup3rSecret!", newPassword: "NewSecret!" }
+ *               newPassword: { type: string, description: 'Minimum 8 characters, at least one uppercase letter, one number, and one special character (!"#$%&''()*+,-./:;<=>?@[\]^_`{|}~).' }
+ *           example: { currentPassword: "Sup3rSecret!", newPassword: "NewSecret1!" }
  *     responses:
  *       200:
  *         description: Verification code sent to the account's email - the password has not changed yet
  *         content:
  *           application/json:
  *             example: { success: true, message: "Success!", statusCode: 200, content: null }
+ *       400:
+ *         description: The new password does not meet the required policy
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Password must be at least 8 characters long and include at least one uppercase letter, one number, and one special character (...).", statusCode: 400, content: null }
  *       401:
  *         description: Missing/malformed/expired Authorization header, or `currentPassword` does not match
  *         content:
@@ -290,8 +297,8 @@ const AuthController = require('../controllers/auth')
  *             required: [token, newPassword]
  *             properties:
  *               token: { type: string }
- *               newPassword: { type: string }
- *           example: { token: "a1b2c3...", newPassword: "NewSecret!" }
+ *               newPassword: { type: string, description: 'Minimum 8 characters, at least one uppercase letter, one number, and one special character (!"#$%&''()*+,-./:;<=>?@[\]^_`{|}~).' }
+ *           example: { token: "a1b2c3...", newPassword: "NewSecret1!" }
  *     responses:
  *       200:
  *         description: Password reset
@@ -299,7 +306,7 @@ const AuthController = require('../controllers/auth')
  *           application/json:
  *             example: { success: true, message: "Success!", statusCode: 200, content: null }
  *       400:
- *         description: The token does not exist, was already used, or has expired
+ *         description: The token does not exist, was already used, or has expired, or the new password does not meet the required policy
  *         content:
  *           application/json:
  *             example: { success: false, message: "Invalid or expired reset token.", statusCode: 400, content: null }

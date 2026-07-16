@@ -6,7 +6,7 @@ const DataValidatorHandler = require('../handlers/dataValidator')
 const EmailManagerHandler = require('../handlers/emailManager')
 const DbConnectionHandler = require('../handlers/dbConnections')
 const envVariables = require('../handlers/envVariables')
-const { UnauthorizedError } = require('../handlers/handleErrors')
+const { UnauthorizedError, InternalServerError } = require('../handlers/handleErrors')
 const ExtractBearerToken = require('./commands/extractBearerToken')
 const FindSessionByToken = require('./commands/findSessionByToken')
 const FindUserById = require('./commands/findUserById')
@@ -19,6 +19,7 @@ const SendPasswordResetEmail = require('./commands/sendPasswordResetEmail')
 const FindValidPasswordResetToken = require('./commands/findValidPasswordResetToken')
 const AuthorizeAccountAccess = require('./commands/authorizeAccountAccess')
 const CheckEmailAvailable = require('./commands/checkEmailAvailable')
+const ValidatePasswordPolicy = require('./commands/validatePasswordPolicy')
 const GenerateNumericCode = require('./commands/generateNumericCode')
 const SendChangePasswordVerificationEmail = require('./commands/sendChangePasswordVerificationEmail')
 const FindValidChangePasswordCode = require('./commands/findValidChangePasswordCode')
@@ -51,6 +52,7 @@ class AccountManagementService {
 		this.findValidPasswordResetToken = FindValidPasswordResetToken.getInstance()
 		this.authorizeAccountAccess = AuthorizeAccountAccess.getInstance()
 		this.checkEmailAvailable = CheckEmailAvailable.getInstance()
+		this.validatePasswordPolicy = ValidatePasswordPolicy.getInstance()
 		this.generateNumericCode = GenerateNumericCode.getInstance()
 		this.sendChangePasswordVerificationEmail = SendChangePasswordVerificationEmail.getInstance()
 		this.findValidChangePasswordCode = FindValidChangePasswordCode.getInstance()
@@ -79,26 +81,36 @@ class AccountManagementService {
 		const matches = this.verifyPassword.execute({ dataEncryptHandler: this.dataEncryptHandler, password: currentPassword, hash: user.password })
 		if (!matches) throw new UnauthorizedError('Current password does not match.')
 
-		// Step 3: discard any previous pending verification code for this user - only the latest request stays valid
+		// Step 3: reject a new password that doesn't meet the required policy
+		this.validatePasswordPolicy.execute({ password: newPassword })
+
+		// Step 4: discard any previous pending verification code for this user - only the latest request stays valid
 		await this.deleteResourcesByUser.execute({ repository: this.repository, schemaName: 'change_password_verification_code', userId: session.user })
 
-		// Step 4: pre-hash the new password so it's never stored (or resent) in plain text while the change is pending
+		// Step 5: pre-hash the new password so it's never stored (or resent) in plain text while the change is pending
 		const newPasswordHash = await this.hashPassword.execute({ dataEncryptHandler: this.dataEncryptHandler, password: newPassword })
 
-		// Step 5: generate a 6-digit verification code and persist it alongside the pending password change
+		// Step 6: generate a 6-digit verification code and persist it alongside the pending password change
 		const code = this.generateNumericCode.execute()
 		const expiresAt = this.computeExpiryDate.execute({ luxon: this.luxon, duration: envVariables.CHANGE_PASSWORD_CODE_DEFAULT_TIME || '5m' })
 		await this.repository.add('change_password_verification_code', { data: { user: String(session.user), code, newPasswordHash, expiresAt, used: false, attempts: 0 } })
 
-		// Step 6: email the verification code - the caller is already authenticated, so a delivery failure must surface (unlike forgot-password)
-		await this.sendChangePasswordVerificationEmail.execute({
-			emailManagerHandler: this.emailManagerHandler,
-			apiUrl: envVariables.RESEND_API_URL || 'https://api.resend.com/emails',
-			resendToken: envVariables.RESEND_TOKEN,
-			from: envVariables.ADMIN_MAIL_FROM || 'onboarding@resend.dev',
-			to: user.email,
-			code
-		})
+		// Step 7: email the verification code - the caller is already authenticated, so a delivery failure must surface (unlike forgot-password).
+		// Wrapped so a raw provider error (e.g. Resend rejecting the API key with its own 401) never
+		// reaches the client with a status code that could be confused with an auth/credentials failure.
+		try {
+			await this.sendChangePasswordVerificationEmail.execute({
+				emailManagerHandler: this.emailManagerHandler,
+				apiUrl: envVariables.RESEND_API_URL || 'https://api.resend.com/emails',
+				resendToken: envVariables.RESEND_TOKEN,
+				from: envVariables.ADMIN_MAIL_FROM || 'onboarding@resend.dev',
+				to: user.email,
+				code
+			})
+		} catch (error) {
+			console.error('Failed to send change-password verification email:', error)
+			throw new InternalServerError('Failed to send the verification email.')
+		}
 
 		return null
 	}
@@ -177,14 +189,17 @@ class AccountManagementService {
 		// Step 1: find a still-valid (unused, not expired) password reset token
 		const resetToken = await this.findValidPasswordResetToken.execute({ repository: this.repository, luxon: this.luxon, token })
 
-		// Step 2: hash and persist the new password
+		// Step 2: reject a new password that doesn't meet the required policy
+		this.validatePasswordPolicy.execute({ password: newPassword })
+
+		// Step 3: hash and persist the new password
 		const hashedPassword = await this.hashPassword.execute({ dataEncryptHandler: this.dataEncryptHandler, password: newPassword })
 		await this.userService.update({ id: resetToken.user, body: { password: hashedPassword } })
 
-		// Step 3: mark the reset token as used - it is single-use
+		// Step 4: mark the reset token as used - it is single-use
 		await this.repository.update('password_reset_token', { id: resetToken._id, data: { used: true } })
 
-		// Step 4: revoke every active session for this user (no exception - the caller isn't authenticated)
+		// Step 5: revoke every active session for this user (no exception - the caller isn't authenticated)
 		await this.deleteResourcesByUser.execute({ repository: this.repository, schemaName: 'session', userId: resetToken.user })
 
 		return null
