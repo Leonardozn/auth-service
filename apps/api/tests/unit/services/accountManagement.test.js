@@ -37,7 +37,7 @@ test('AccountManagementService.changePassword() — emails a verification code w
 	const service = AccountManagementService.getInstance()
 
 	const result = await service.changePassword({
-		body: { currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret!' },
+		body: { currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret1!' },
 		authorizationHeader: 'Bearer current-access-token'
 	})
 
@@ -57,7 +57,32 @@ test('AccountManagementService.changePassword() — emails a verification code w
 	assert.equal(codes.count, 1)
 	assert.equal(codes.records[0].used, false)
 	assert.equal(codes.records[0].attempts, 0)
-	assert.equal(dataEncryptHandler.verify('NewSecret!', codes.records[0].newPasswordHash), true)
+	assert.equal(dataEncryptHandler.verify('NewSecret1!', codes.records[0].newPasswordHash), true)
+})
+
+test('AccountManagementService.changePassword() — wraps an email delivery failure as a 500, never leaking the raw provider error', async () => {
+	await seedUserWithSession(MockRepository.getInstance())
+	const mockEmail = MockEmailManager.getInstance()
+	mockEmail.send = async () => {
+		const err = new Error('Request failed with status code 401')
+		err.isAxiosError = true
+		err.response = { status: 401, data: { statusCode: 401, name: 'validation_error', message: 'API key is invalid' } }
+		throw err
+	}
+	const service = AccountManagementService.getInstance()
+
+	await assert.rejects(
+		() => service.changePassword({
+			body: { currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret1!' },
+			authorizationHeader: 'Bearer current-access-token'
+		}),
+		(error) => {
+			assert.equal(error.name, 'InternalServerError')
+			assert.equal(error.status, 500)
+			assert.notEqual(error.message, 'Request failed with status code 401')
+			return true
+		}
+	)
 })
 
 test('AccountManagementService.changePassword() — discards a previous pending code when requested again', async () => {
@@ -67,8 +92,8 @@ test('AccountManagementService.changePassword() — discards a previous pending 
 	mockEmail.send = async () => ({ id: 'mock-email-id' })
 	const service = AccountManagementService.getInstance()
 
-	await service.changePassword({ body: { currentPassword: 'Sup3rSecret!', newPassword: 'FirstAttempt!' }, authorizationHeader: 'Bearer current-access-token' })
-	await service.changePassword({ body: { currentPassword: 'Sup3rSecret!', newPassword: 'SecondAttempt!' }, authorizationHeader: 'Bearer current-access-token' })
+	await service.changePassword({ body: { currentPassword: 'Sup3rSecret!', newPassword: 'FirstAttempt1!' }, authorizationHeader: 'Bearer current-access-token' })
+	await service.changePassword({ body: { currentPassword: 'Sup3rSecret!', newPassword: 'SecondAttempt1!' }, authorizationHeader: 'Bearer current-access-token' })
 
 	const codes = await repository.list('change_password_verification_code', { query: { user: String(user._id) } })
 	assert.equal(codes.count, 1)
@@ -81,7 +106,7 @@ test('AccountManagementService.changePassword() — throws when the current pass
 
 	await assert.rejects(
 		() => service.changePassword({
-			body: { currentPassword: 'WrongPassword!', newPassword: 'NewSecret!' },
+			body: { currentPassword: 'WrongPassword!', newPassword: 'NewSecret1!' },
 			authorizationHeader: 'Bearer current-access-token'
 		}),
 		{ name: 'UnauthorizedError' }
@@ -122,7 +147,7 @@ test('AccountManagementService.verifyChangePassword() — applies the pending pa
 	let capturedSend
 	mockEmail.send = async (config) => { capturedSend = config; return { id: 'mock-email-id' } }
 	const service = AccountManagementService.getInstance()
-	await service.changePassword({ body: { currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret!' }, authorizationHeader: 'Bearer current-access-token' })
+	await service.changePassword({ body: { currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret1!' }, authorizationHeader: 'Bearer current-access-token' })
 	const code = capturedSend.html.match(/\b(\d{6})\b/)[1]
 
 	const result = await service.verifyChangePassword({ body: { code }, authorizationHeader: 'Bearer current-access-token' })
@@ -131,7 +156,7 @@ test('AccountManagementService.verifyChangePassword() — applies the pending pa
 
 	const dataEncryptHandler = DataEncryptHandler.getInstance()
 	const updatedUser = await repository.list('user', { query: { _id: String(user._id) } })
-	assert.equal(dataEncryptHandler.verify('NewSecret!', updatedUser.records[0].password), true)
+	assert.equal(dataEncryptHandler.verify('NewSecret1!', updatedUser.records[0].password), true)
 
 	const sessions = await repository.list('session', { query: {} })
 	assert.equal(sessions.count, 1)
@@ -157,7 +182,7 @@ test('AccountManagementService.verifyChangePassword() — throws when the code d
 	const mockEmail = MockEmailManager.getInstance()
 	mockEmail.send = async () => ({ id: 'mock-email-id' })
 	const service = AccountManagementService.getInstance()
-	await service.changePassword({ body: { currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret!' }, authorizationHeader: 'Bearer current-access-token' })
+	await service.changePassword({ body: { currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret1!' }, authorizationHeader: 'Bearer current-access-token' })
 
 	await assert.rejects(
 		() => service.verifyChangePassword({ body: { code: '000000' }, authorizationHeader: 'Bearer current-access-token' }),
@@ -246,13 +271,13 @@ test('AccountManagementService.resetPassword() — updates the password, marks t
 	})
 	const service = AccountManagementService.getInstance()
 
-	const result = await service.resetPassword({ body: { token: 'valid-reset-token', newPassword: 'NewSecret!' } })
+	const result = await service.resetPassword({ body: { token: 'valid-reset-token', newPassword: 'NewSecret1!' } })
 
 	assert.equal(result, null)
 
 	const dataEncryptHandler = DataEncryptHandler.getInstance()
 	const updatedUser = await repository.list('user', { query: { _id: String(user._id) } })
-	assert.equal(dataEncryptHandler.verify('NewSecret!', updatedUser.records[0].password), true)
+	assert.equal(dataEncryptHandler.verify('NewSecret1!', updatedUser.records[0].password), true)
 
 	const updatedToken = await repository.list('password_reset_token', { query: { _id: resetToken._id } })
 	assert.equal(updatedToken.records[0].used, true)
@@ -265,7 +290,7 @@ test('AccountManagementService.resetPassword() — throws when the token does no
 	const service = AccountManagementService.getInstance()
 
 	await assert.rejects(
-		() => service.resetPassword({ body: { token: 'missing-token', newPassword: 'NewSecret!' } }),
+		() => service.resetPassword({ body: { token: 'missing-token', newPassword: 'NewSecret1!' } }),
 		{ name: 'BadRequestError' }
 	)
 })
@@ -285,7 +310,7 @@ test('AccountManagementService.resetPassword() — throws when the token was alr
 	const service = AccountManagementService.getInstance()
 
 	await assert.rejects(
-		() => service.resetPassword({ body: { token: 'used-reset-token', newPassword: 'NewSecret!' } }),
+		() => service.resetPassword({ body: { token: 'used-reset-token', newPassword: 'NewSecret1!' } }),
 		{ name: 'BadRequestError' }
 	)
 })

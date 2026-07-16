@@ -67,7 +67,7 @@ test('auth routes — POST /auth/register rejects a duplicate email', async () =
 		const res = await app.request('POST', `${app.path}/auth/register`, {
 			name: 'Ada 2',
 			email: 'ada@example.com',
-			password: 'AnotherSecret!'
+			password: 'AnotherSecret1!'
 		})
 
 		assert.equal(res.status, 400)
@@ -312,7 +312,7 @@ test('auth routes — POST /auth/change-password emails a verification code with
 		const changeRes = await app.request(
 			'POST',
 			`${app.path}/auth/change-password`,
-			{ currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret!' },
+			{ currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret1!' },
 			{ Authorization: `Bearer ${loginRes.body.content.token}` }
 		)
 
@@ -358,7 +358,7 @@ test('auth routes — POST /auth/change-password/verify applies the pending pass
 		await app.request(
 			'POST',
 			`${app.path}/auth/change-password`,
-			{ currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret!' },
+			{ currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret1!' },
 			{ Authorization: `Bearer ${firstLogin.body.content.token}` }
 		)
 		const sent = JSON.parse(fs.readFileSync(captureFile, 'utf8'))
@@ -390,7 +390,7 @@ test('auth routes — POST /auth/change-password/verify applies the pending pass
 		// old password no longer works, new one does
 		const oldLogin = await app.request('POST', `${app.path}/auth/login`, { email: 'ada@example.com', password: 'Sup3rSecret!' })
 		assert.equal(oldLogin.status, 401)
-		const newLogin = await app.request('POST', `${app.path}/auth/login`, { email: 'ada@example.com', password: 'NewSecret!' })
+		const newLogin = await app.request('POST', `${app.path}/auth/login`, { email: 'ada@example.com', password: 'NewSecret1!' })
 		assert.equal(newLogin.status, 200)
 	} finally {
 		await app.stop()
@@ -415,7 +415,7 @@ test('auth routes — POST /auth/change-password/verify rejects a wrong code', a
 		await app.request(
 			'POST',
 			`${app.path}/auth/change-password`,
-			{ currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret!' },
+			{ currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret1!' },
 			{ Authorization: `Bearer ${loginRes.body.content.token}` }
 		)
 
@@ -456,7 +456,7 @@ test('auth routes — POST /auth/change-password rejects the wrong current passw
 		const res = await app.request(
 			'POST',
 			`${app.path}/auth/change-password`,
-			{ currentPassword: 'WrongPassword!', newPassword: 'NewSecret!' },
+			{ currentPassword: 'WrongPassword!', newPassword: 'NewSecret1!' },
 			{ Authorization: `Bearer ${loginRes.body.content.token}` }
 		)
 
@@ -551,7 +551,7 @@ test('auth routes — POST /auth/reset-password updates the password and revokes
 		const tokensRes = await app.request('GET', `${app.path}/password_reset_token`, undefined, { Authorization: `Bearer ${ADMIN_TOKEN}` })
 		const resetToken = tokensRes.body.content.records[0].token
 
-		const resetRes = await app.request('POST', `${app.path}/auth/reset-password`, { token: resetToken, newPassword: 'NewSecret!' })
+		const resetRes = await app.request('POST', `${app.path}/auth/reset-password`, { token: resetToken, newPassword: 'NewSecret1!' })
 
 		assert.equal(resetRes.status, 200)
 		assert.deepEqual(resetRes.body, {
@@ -568,11 +568,11 @@ test('auth routes — POST /auth/reset-password updates the password and revokes
 		// old password no longer works, new one does
 		const oldLogin = await app.request('POST', `${app.path}/auth/login`, { email: 'ada@example.com', password: 'Sup3rSecret!' })
 		assert.equal(oldLogin.status, 401)
-		const newLogin = await app.request('POST', `${app.path}/auth/login`, { email: 'ada@example.com', password: 'NewSecret!' })
+		const newLogin = await app.request('POST', `${app.path}/auth/login`, { email: 'ada@example.com', password: 'NewSecret1!' })
 		assert.equal(newLogin.status, 200)
 
 		// the token is single-use - reusing it must fail
-		const reuseRes = await app.request('POST', `${app.path}/auth/reset-password`, { token: resetToken, newPassword: 'AnotherSecret!' })
+		const reuseRes = await app.request('POST', `${app.path}/auth/reset-password`, { token: resetToken, newPassword: 'AnotherSecret1!' })
 		assert.equal(reuseRes.status, 400)
 	} finally {
 		await app.stop()
@@ -583,7 +583,7 @@ test('auth routes — POST /auth/reset-password rejects an invalid token', async
 	const app = await runApp()
 
 	try {
-		const res = await app.request('POST', `${app.path}/auth/reset-password`, { token: 'not-a-real-token', newPassword: 'NewSecret!' })
+		const res = await app.request('POST', `${app.path}/auth/reset-password`, { token: 'not-a-real-token', newPassword: 'NewSecret1!' })
 
 		assert.equal(res.status, 400)
 		assert.deepEqual(res.body, {

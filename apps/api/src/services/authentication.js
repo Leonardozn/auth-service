@@ -7,6 +7,7 @@ const envVariables = require('../handlers/envVariables')
 const { ForbiddenError } = require('../handlers/handleErrors')
 const ResolveDefaultRole = require('./commands/resolveDefaultRole')
 const CheckEmailAvailable = require('./commands/checkEmailAvailable')
+const ValidatePasswordPolicy = require('./commands/validatePasswordPolicy')
 const HashPassword = require('./commands/hashPassword')
 const VerifyCredentials = require('./commands/verifyCredentials')
 const IssueTokenPair = require('./commands/issueTokenPair')
@@ -34,6 +35,7 @@ class AuthenticationService {
 
 		this.resolveDefaultRole = ResolveDefaultRole.getInstance()
 		this.checkEmailAvailable = CheckEmailAvailable.getInstance()
+		this.validatePasswordPolicy = ValidatePasswordPolicy.getInstance()
 		this.hashPassword = HashPassword.getInstance()
 		this.verifyCredentials = VerifyCredentials.getInstance()
 		this.issueTokenPair = IssueTokenPair.getInstance()
@@ -54,16 +56,19 @@ class AuthenticationService {
 	async register(config = {}) {
 		const { name, email, password } = this.authInterface.getRegisterInterface().parse(config.body)
 
-		// Step 1: resolve the default "user" role new registrations are assigned
+		// Step 1: reject a password that doesn't meet the required policy
+		this.validatePasswordPolicy.execute({ password })
+
+		// Step 2: resolve the default "user" role new registrations are assigned
 		const role = await this.resolveDefaultRole.execute({ repository: this.repository })
 
-		// Step 2: reject registration if the email is already taken
+		// Step 3: reject registration if the email is already taken
 		await this.checkEmailAvailable.execute({ repository: this.repository, email })
 
-		// Step 3: hash the plain-text password before persisting it
+		// Step 4: hash the plain-text password before persisting it
 		const hashedPassword = await this.hashPassword.execute({ dataEncryptHandler: this.dataEncryptHandler, password })
 
-		// Step 4: create the user (active by default), reusing the User model's own service method -
+		// Step 5: create the user (active by default), reusing the User model's own service method -
 		// trustedRoleAssignment skips the admin check since this role came from resolveDefaultRole, not the client
 		const user = await this.userService.add({ body: { name, email, password: hashedPassword, role: String(role._id), active: true }, trustedRoleAssignment: true })
 

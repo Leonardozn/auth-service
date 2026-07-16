@@ -270,7 +270,7 @@ test('AuthController.changePassword — returns 200 with null content and emails
 	const mockEmail = MockEmailManager.getInstance()
 	mockEmail.send = async () => ({ id: 'mock-email-id' })
 	const controller = AuthController.getInstance()
-	const req = { body: { currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret!' }, headers: { authorization: 'Bearer current-access-token' } }
+	const req = { body: { currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret1!' }, headers: { authorization: 'Bearer current-access-token' } }
 	let capturedStatus, capturedBody
 	const res = {
 		status(code) { capturedStatus = code; return this },
@@ -309,7 +309,7 @@ test('AuthController.verifyChangePassword — returns 200 with null content and 
 	let capturedSend
 	mockEmail.send = async (config) => { capturedSend = config; return { id: 'mock-email-id' } }
 	const controller = AuthController.getInstance()
-	const changeReq = { body: { currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret!' }, headers: { authorization: 'Bearer current-access-token' } }
+	const changeReq = { body: { currentPassword: 'Sup3rSecret!', newPassword: 'NewSecret1!' }, headers: { authorization: 'Bearer current-access-token' } }
 	const noopRes = { status() { return this }, json() { return this } }
 	await controller.changePassword(changeReq, noopRes)
 	const code = capturedSend.html.match(/\b(\d{6})\b/)[1]
@@ -332,7 +332,7 @@ test('AuthController.verifyChangePassword — returns 200 with null content and 
 	})
 
 	const updatedUser = await repository.list('user', { query: { _id: String(user._id) } })
-	assert.equal(dataEncryptHandler.verify('NewSecret!', updatedUser.records[0].password), true)
+	assert.equal(dataEncryptHandler.verify('NewSecret1!', updatedUser.records[0].password), true)
 })
 
 test('AuthController.verifyChangePassword — returns 400 when there is no pending code', async () => {
@@ -382,7 +382,7 @@ test('AuthController.changePassword — returns 401 when the current password is
 		}
 	})
 	const controller = AuthController.getInstance()
-	const req = { body: { currentPassword: 'WrongPassword!', newPassword: 'NewSecret!' }, headers: { authorization: 'Bearer current-access-token' } }
+	const req = { body: { currentPassword: 'WrongPassword!', newPassword: 'NewSecret1!' }, headers: { authorization: 'Bearer current-access-token' } }
 	let capturedStatus, capturedBody
 	const res = {
 		status(code) { capturedStatus = code; return this },
@@ -440,7 +440,7 @@ test('AuthController.resetPassword — returns 200 with null content on success'
 		}
 	})
 	const controller = AuthController.getInstance()
-	const req = { body: { token: 'valid-reset-token', newPassword: 'NewSecret!' } }
+	const req = { body: { token: 'valid-reset-token', newPassword: 'NewSecret1!' } }
 	let capturedStatus, capturedBody
 	const res = {
 		status(code) { capturedStatus = code; return this },
@@ -460,7 +460,7 @@ test('AuthController.resetPassword — returns 200 with null content on success'
 
 test('AuthController.resetPassword — returns 400 when the token is invalid', async () => {
 	const controller = AuthController.getInstance()
-	const req = { body: { token: 'missing-token', newPassword: 'NewSecret!' } }
+	const req = { body: { token: 'missing-token', newPassword: 'NewSecret1!' } }
 	let capturedStatus, capturedBody
 	const res = {
 		status(code) { capturedStatus = code; return this },
