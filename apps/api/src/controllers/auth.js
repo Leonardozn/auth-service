@@ -1,5 +1,6 @@
 const AuthenticationService = require('../services/authentication')
 const AccountManagementService = require('../services/accountManagement')
+const EmailConfirmationService = require('../services/emailConfirmation')
 const HandleResponseHandler = require('../handlers/handleResponse')
 const { HttpStatus } = require('../handlers/handleErrors')
 
@@ -26,6 +27,7 @@ class AuthController {
 
 		this.authenticationService = AuthenticationService.getInstance()
 		this.accountManagementService = AccountManagementService.getInstance()
+		this.emailConfirmationService = EmailConfirmationService.getInstance()
 
 		this.register = this.register.bind(this)
 		this.login = this.login.bind(this)
@@ -37,6 +39,9 @@ class AuthController {
 		this.forgotPassword = this.forgotPassword.bind(this)
 		this.resetPassword = this.resetPassword.bind(this)
 		this.deactivate = this.deactivate.bind(this)
+		this.emailStatus = this.emailStatus.bind(this)
+		this.sendConfirmationCode = this.sendConfirmationCode.bind(this)
+		this.verifyConfirmationCode = this.verifyConfirmationCode.bind(this)
 	}
 
 	static getInstance() {
@@ -60,7 +65,7 @@ class AuthController {
 
 	async login(req, res) {
 		try {
-			const result = await this.authenticationService.login({ body: req.body })
+			const result = await this.authenticationService.login({ body: req.body, ip: req.ip, userAgent: req.get('user-agent') })
 			const response = this.handleResponseHandler.buildResponse(result)
 
 			res.status(response[this.responseBody.STATUS]).json(response)
@@ -173,6 +178,48 @@ class AuthController {
 	async deactivate(req, res) {
 		try {
 			const result = await this.accountManagementService.deactivateAccount({ authorizationHeader: req.headers.authorization })
+			const response = this.handleResponseHandler.buildResponse(result)
+
+			res.status(response[this.responseBody.STATUS]).json(response)
+		} catch (error) {
+			console.error(error)
+			const response = this.handleResponseHandler.buildResponse(error)
+
+			res.status(response[this.responseBody.STATUS]).json(response)
+		}
+	}
+
+	async emailStatus(req, res) {
+		try {
+			const result = await this.emailConfirmationService.checkEmailStatus({ body: req.body })
+			const response = this.handleResponseHandler.buildResponse(result)
+
+			res.status(response[this.responseBody.STATUS]).json(response)
+		} catch (error) {
+			console.error(error)
+			const response = this.handleResponseHandler.buildResponse(error)
+
+			res.status(response[this.responseBody.STATUS]).json(response)
+		}
+	}
+
+	async sendConfirmationCode(req, res) {
+		try {
+			const result = await this.emailConfirmationService.sendCode({ body: req.body })
+			const response = this.handleResponseHandler.buildResponse(result)
+
+			res.status(response[this.responseBody.STATUS]).json(response)
+		} catch (error) {
+			console.error(error)
+			const response = this.handleResponseHandler.buildResponse(error)
+
+			res.status(response[this.responseBody.STATUS]).json(response)
+		}
+	}
+
+	async verifyConfirmationCode(req, res) {
+		try {
+			const result = await this.emailConfirmationService.verifyCode({ body: req.body, ip: req.ip, userAgent: req.get('user-agent') })
 			const response = this.handleResponseHandler.buildResponse(result)
 
 			res.status(response[this.responseBody.STATUS]).json(response)

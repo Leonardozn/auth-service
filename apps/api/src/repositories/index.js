@@ -5,6 +5,8 @@ const UserModel = require('../models/user')
 const SessionModel = require('../models/session')
 const PasswordResetTokenModel = require('../models/password_reset_token')
 const ChangePasswordVerificationCodeModel = require('../models/change_password_verification_code')
+const ConfirmationCodeModel = require('../models/confirmation_code')
+const LoginRecordModel = require('../models/login_record')
 
 class Repository {
 	/**
@@ -29,7 +31,9 @@ class Repository {
 			user: UserModel,
 			session: SessionModel,
 			password_reset_token: PasswordResetTokenModel,
-			change_password_verification_code: ChangePasswordVerificationCodeModel
+			change_password_verification_code: ChangePasswordVerificationCodeModel,
+			confirmation_code: ConfirmationCodeModel,
+			login_record: LoginRecordModel
 		}
 
 		this.mongooseEntityQueries = MongooseEntityQueries.getInstance()

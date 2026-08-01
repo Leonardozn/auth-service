@@ -17,6 +17,7 @@ class UserContract {
 			email: true,
 			role: true,
 			active: true,
+			emailConfirmed: true,
 		}
 	}
 }

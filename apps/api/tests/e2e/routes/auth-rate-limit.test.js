@@ -42,3 +42,60 @@ test('auth routes — each sensitive endpoint has its own strict budget', async 
 		await app.stop()
 	}
 })
+
+// The three new confirmation-code endpoints are exactly as sensitive/unauthenticated as
+// register/login (account-existence probing, code brute-forcing) - each gets the same strict,
+// per-path budget as the routes above.
+test('auth routes — POST /auth/email-status is blocked with 429 past the strict rate limit', async () => {
+	const app = await runApp({ RATE_LIMIT_STRICT_MAX: '2', RATE_LIMIT_STRICT_WINDOW_MS: '60000' })
+
+	try {
+		const body = { email: 'nobody@example.com' }
+
+		const first = await app.request('POST', `${app.path}/auth/email-status`, body)
+		const second = await app.request('POST', `${app.path}/auth/email-status`, body)
+		const third = await app.request('POST', `${app.path}/auth/email-status`, body)
+
+		assert.equal(first.status, 200)
+		assert.equal(second.status, 200)
+		assert.equal(third.status, 429)
+	} finally {
+		await app.stop()
+	}
+})
+
+test('auth routes — POST /auth/send-confirmation-code is blocked with 429 past the strict rate limit', async () => {
+	const app = await runApp({ RATE_LIMIT_STRICT_MAX: '2', RATE_LIMIT_STRICT_WINDOW_MS: '60000' })
+
+	try {
+		const body = { email: 'nobody@example.com' }
+
+		const first = await app.request('POST', `${app.path}/auth/send-confirmation-code`, body)
+		const second = await app.request('POST', `${app.path}/auth/send-confirmation-code`, body)
+		const third = await app.request('POST', `${app.path}/auth/send-confirmation-code`, body)
+
+		assert.equal(first.status, 404)
+		assert.equal(second.status, 404)
+		assert.equal(third.status, 429)
+	} finally {
+		await app.stop()
+	}
+})
+
+test('auth routes — POST /auth/verify-confirmation-code is blocked with 429 past the strict rate limit', async () => {
+	const app = await runApp({ RATE_LIMIT_STRICT_MAX: '2', RATE_LIMIT_STRICT_WINDOW_MS: '60000' })
+
+	try {
+		const body = { email: 'nobody@example.com', code: '000000' }
+
+		const first = await app.request('POST', `${app.path}/auth/verify-confirmation-code`, body)
+		const second = await app.request('POST', `${app.path}/auth/verify-confirmation-code`, body)
+		const third = await app.request('POST', `${app.path}/auth/verify-confirmation-code`, body)
+
+		assert.equal(first.status, 400)
+		assert.equal(second.status, 400)
+		assert.equal(third.status, 429)
+	} finally {
+		await app.stop()
+	}
+})

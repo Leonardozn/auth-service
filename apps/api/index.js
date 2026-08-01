@@ -97,7 +97,10 @@ if (uploadPaths.length > 0) {
 
 // Strict rate limit on the sensitive, unauthenticated auth endpoints (credential brute-force and
 // email/account-creation abuse). A fresh limiter per path so each gets its own per-IP budget.
-const strictAuthPaths = ['/auth/register', '/auth/login', '/auth/forgot-password', '/auth/reset-password']
+const strictAuthPaths = [
+	'/auth/register', '/auth/login', '/auth/forgot-password', '/auth/reset-password',
+	'/auth/email-status', '/auth/send-confirmation-code', '/auth/verify-confirmation-code'
+]
 for (const strictPath of strictAuthPaths) {
 	middlewares.push({
 		includeInPaths: [{ name: strictPath, method: 'post' }],
