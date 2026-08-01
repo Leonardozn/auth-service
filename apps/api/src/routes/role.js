@@ -8,7 +8,11 @@ const RoleController = require('../controllers/role')
  *       Platform-wide RBAC roles (e.g. "user", "admin"). Every mutation (create, replace,
  *       update, delete) requires an authenticated admin session, unconditionally - there is no
  *       self-service or ownership concept for a Role. Reading (`GET`) only requires being
- *       authenticated, any role.
+ *       authenticated, any role. `permissions` is a single, global catalog shared by every
+ *       microservice that consumes this auth-service - `resource` is free text each consumer
+ *       defines on its own (auth-service never interprets it), and `read`/`write` are checked by
+ *       `POST /auth/validate` when a consumer passes `resource`/`action`. No role gets an
+ *       implicit bypass (not even "admin") - authorization is entirely data-driven from this list.
  *
  * /role:
  *   post:
@@ -29,13 +33,23 @@ const RoleController = require('../controllers/role')
  *               name: { type: string }
  *               active: { type: boolean }
  *               maxSessions: { type: integer, description: "Max concurrent Sessions users with this role may hold. Omitted or <= 0 means unlimited - on login, the oldest session is evicted once the limit is reached." }
- *           example: { name: "contributor", active: true, maxSessions: 3 }
+ *               permissions:
+ *                 type: array
+ *                 description: "Global resource-permission catalog for this role, shared by every microservice. `resource` is free text (each consumer defines its own names); `read`/`write` default to falsy when omitted."
+ *                 items:
+ *                   type: object
+ *                   required: [resource]
+ *                   properties:
+ *                     resource: { type: string }
+ *                     read: { type: boolean }
+ *                     write: { type: boolean }
+ *           example: { name: "contributor", active: true, maxSessions: 3, permissions: [{ resource: "curriculum", read: true, write: false }] }
  *     responses:
  *       200:
  *         description: Role created
  *         content:
  *           application/json:
- *             example: { success: true, message: "Success!", statusCode: 200, content: { name: "contributor", active: true, maxSessions: 3 } }
+ *             example: { success: true, message: "Success!", statusCode: 200, content: { name: "contributor", active: true, maxSessions: 3, permissions: [{ resource: "curriculum", read: true, write: false }] } }
  *       400:
  *         description: |
  *           Validation error (missing/invalid field). Zod reports the generic message
@@ -97,7 +111,7 @@ const RoleController = require('../controllers/role')
  *         description: List retrieved
  *         content:
  *           application/json:
- *             example: { success: true, message: "Success!", statusCode: 200, content: { count: 1, records: [{ name: "editor", active: true }] } }
+ *             example: { success: true, message: "Success!", statusCode: 200, content: { count: 1, records: [{ name: "editor", active: true, permissions: [{ resource: "curriculum", read: true, write: false }] }] } }
  *       400:
  *         description: Invalid filter, operator, or value type (e.g. an operator not supported by that field's type)
  *         content:
@@ -131,7 +145,7 @@ const RoleController = require('../controllers/role')
  *         description: Role found
  *         content:
  *           application/json:
- *             example: { success: true, message: "Success!", statusCode: 200, content: { name: "editor", active: true } }
+ *             example: { success: true, message: "Success!", statusCode: 200, content: { name: "editor", active: true, permissions: [{ resource: "curriculum", read: true, write: false }] } }
  *       400:
  *         description: No role matches the given id
  *         content:
@@ -169,13 +183,22 @@ const RoleController = require('../controllers/role')
  *               name: { type: string }
  *               active: { type: boolean }
  *               maxSessions: { type: integer, description: "Max concurrent Sessions users with this role may hold. Omitted or <= 0 means unlimited - on login, the oldest session is evicted once the limit is reached." }
- *           example: { name: "editor-put", active: true, maxSessions: 3 }
+ *               permissions:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required: [resource]
+ *                   properties:
+ *                     resource: { type: string }
+ *                     read: { type: boolean }
+ *                     write: { type: boolean }
+ *           example: { name: "editor-put", active: true, maxSessions: 3, permissions: [{ resource: "curriculum", read: true, write: true }] }
  *     responses:
  *       200:
  *         description: Role replaced
  *         content:
  *           application/json:
- *             example: { success: true, message: "Success!", statusCode: 200, content: { name: "editor-put", active: true, maxSessions: 3 } }
+ *             example: { success: true, message: "Success!", statusCode: 200, content: { name: "editor-put", active: true, maxSessions: 3, permissions: [{ resource: "curriculum", read: true, write: true }] } }
  *       400:
  *         description: |
  *           Either a validation error (same "Invalid input" shape as `POST /role`), or no role
@@ -219,13 +242,21 @@ const RoleController = require('../controllers/role')
  *               name: { type: string }
  *               active: { type: boolean }
  *               maxSessions: { type: integer, description: "Max concurrent Sessions users with this role may hold. Omitted or <= 0 means unlimited - on login, the oldest session is evicted once the limit is reached." }
- *           example: { name: "editor-updated" }
+ *               permissions:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     resource: { type: string }
+ *                     read: { type: boolean }
+ *                     write: { type: boolean }
+ *           example: { permissions: [{ resource: "curriculum", read: true, write: true }] }
  *     responses:
  *       200:
  *         description: Role updated
  *         content:
  *           application/json:
- *             example: { success: true, message: "Success!", statusCode: 200, content: { name: "editor-updated", active: true } }
+ *             example: { success: true, message: "Success!", statusCode: 200, content: { name: "editor-updated", active: true, permissions: [{ resource: "curriculum", read: true, write: true }] } }
  *       400:
  *         description: |
  *           Either a validation error (same "Invalid input" shape as `POST /role`), or no role

@@ -6,7 +6,7 @@ const DataValidatorHandler = require('../handlers/dataValidator')
 const EmailManagerHandler = require('../handlers/emailManager')
 const DbConnectionHandler = require('../handlers/dbConnections')
 const envVariables = require('../handlers/envVariables')
-const { ForbiddenError } = require('../handlers/handleErrors')
+const { BadRequestError, ForbiddenError } = require('../handlers/handleErrors')
 const ResolveDefaultRole = require('./commands/resolveDefaultRole')
 const CheckEmailAvailable = require('./commands/checkEmailAvailable')
 const ValidatePasswordPolicy = require('./commands/validatePasswordPolicy')
@@ -21,7 +21,8 @@ const FindSessionByToken = require('./commands/findSessionByToken')
 const ExtractBearerToken = require('./commands/extractBearerToken')
 const RemoveSessionByToken = require('./commands/removeSessionByToken')
 const EnforceSessionLimit = require('./commands/enforceSessionLimit')
-const ResolveRoleName = require('./commands/resolveRoleName')
+const FindRoleById = require('./commands/findRoleById')
+const CheckResourcePermission = require('./commands/checkResourcePermission')
 const DeleteResourcesByUser = require('./commands/deleteResourcesByUser')
 const GenerateNumericCode = require('./commands/generateNumericCode')
 const EnforceConfirmationCodeCooldown = require('./commands/enforceConfirmationCodeCooldown')
@@ -62,7 +63,8 @@ class AuthenticationService {
 		this.extractBearerToken = ExtractBearerToken.getInstance()
 		this.removeSessionByToken = RemoveSessionByToken.getInstance()
 		this.enforceSessionLimit = EnforceSessionLimit.getInstance()
-		this.resolveRoleName = ResolveRoleName.getInstance()
+		this.findRoleById = FindRoleById.getInstance()
+		this.checkResourcePermission = CheckResourcePermission.getInstance()
 		this.deleteResourcesByUser = DeleteResourcesByUser.getInstance()
 		this.generateNumericCode = GenerateNumericCode.getInstance()
 		this.enforceConfirmationCodeCooldown = EnforceConfirmationCodeCooldown.getInstance()
@@ -292,7 +294,7 @@ class AuthenticationService {
 	}
 
 	async validate(config = {}) {
-		const { token } = this.authInterface.getValidateInterface().parse(config.body)
+		const { token, resource, action } = this.authInterface.getValidateInterface().parse(config.body)
 
 		// Step 1: find a still-valid session matching the given access token
 		const session = await this.findSessionByToken.execute({
@@ -307,9 +309,19 @@ class AuthenticationService {
 		// authenticated via the access token, so this internal read skips User's own session check
 		const user = await this.userService.findOne({ id: session.user, skipAuthCheck: true })
 
-		// Step 3: expose the role's name (not its id) - this is the contract every other service
-		// (e.g. cv-service) authorizes off, so `role` must resolve to 'admin'/'user', not an id
-		user.role = await this.resolveRoleName.execute({ repository: this.repository, roleId: user.role })
+		// Step 3: resolve the full Role in one query - both to expose its name (the contract every
+		// other service, e.g. cv-service, already authorizes off - 'admin'/'user', never an id) and,
+		// when a resource/action pair was requested, to check its permissions list below.
+		const role = await this.findRoleById.execute({ repository: this.repository, roleId: user.role })
+		user.role = role ? role.name : null
+
+		// Step 4: a caller asking "can this token do X on Y" must supply both resource and action
+		// together - one without the other is ambiguous, not a partial check. No role name is ever
+		// special-cased here (not even "admin"): the answer comes entirely from role.permissions.
+		if (resource || action) {
+			if (!resource || !action) throw new BadRequestError('Both resource and action are required together.')
+			this.checkResourcePermission.execute({ permissions: role ? role.permissions : [], resource, action })
+		}
 
 		return { user }
 	}

@@ -140,11 +140,18 @@ const AuthController = require('../controllers/auth')
  * /auth/validate:
  *   post:
  *     tags: [Auth]
- *     summary: Validate an access token (base of the authentication protocol)
+ *     summary: Validate an access token (base of the authentication protocol), optionally checking a resource permission
  *     description: |
  *       The contract every other service (e.g. cv-service) uses to authorize requests: forward
  *       the caller's access token here and trust the returned `user` - never decode the opaque
  *       token directly. `user.role` is the Role's name (e.g. "admin"/"user"), not its id.
+ *
+ *       Passing `resource`/`action` (`action`: `"read"` or `"write"`) additionally checks that
+ *       one specific permission against the caller's Role - a global catalog shared by every
+ *       microservice (see `POST /role`). Both fields are optional but required together; when
+ *       omitted, this endpoint behaves exactly as it always has (identity/session check only).
+ *       No role name is ever special-cased (not even "admin") - the answer comes entirely from
+ *       `Role.permissions` data.
  *     requestBody:
  *       required: true
  *       content:
@@ -154,18 +161,30 @@ const AuthController = require('../controllers/auth')
  *             required: [token]
  *             properties:
  *               token: { type: string }
+ *               resource: { type: string, description: "Free text, defined by the calling service - e.g. \"curriculum\". Requires `action`." }
+ *               action: { type: string, enum: [read, write], description: "Requires `resource`." }
  *           example: { token: "705583ddc68c5d347bca61ee65623348b4ea0a1094d22e00a68a2ef01139a840" }
  *     responses:
  *       200:
- *         description: Token is valid and not expired
+ *         description: Token is valid and not expired (and, if requested, the resource permission is granted)
  *         content:
  *           application/json:
  *             example: { success: true, message: "Success!", statusCode: 200, content: { user: { _id: "28ea21407ef7a29c2ffbe909", name: "Ada", email: "ada@example.com", role: "admin", active: true } } }
+ *       400:
+ *         description: Validation error, or only one of `resource`/`action` was provided
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Both resource and action are required together.", statusCode: 400, content: null }
  *       401:
  *         description: No session matches the given token, or it has expired
  *         content:
  *           application/json:
  *             example: { success: false, message: "Invalid or expired token.", statusCode: 401, content: null }
+ *       403:
+ *         description: The token is valid, but the caller's Role does not grant `action` on `resource`
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Not authorized to write \"curriculum\".", statusCode: 403, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
