@@ -360,6 +360,96 @@ test('AuthenticationService.validate() — returns the user for a valid, non-exp
 	assert.equal(result.user.password, undefined)
 })
 
+test('AuthenticationService.validate() — resource/action: returns 200 when the role grants the permission', async () => {
+	const repository = MockRepository.getInstance()
+	const { DateTime } = luxon
+	const role = await repository.add('role', { data: { name: 'editor', active: true, permissions: [{ resource: 'curriculum', read: true, write: false }] } })
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: String(role._id) } })
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'valid-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'some-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const service = AuthenticationService.getInstance()
+
+	const result = await service.validate({ body: { token: 'valid-access-token', resource: 'curriculum', action: 'read' } })
+
+	assert.equal(result.user.name, 'Ada')
+})
+
+test('AuthenticationService.validate() — resource/action: throws 403 when the role does not grant the permission', async () => {
+	const repository = MockRepository.getInstance()
+	const { DateTime } = luxon
+	const role = await repository.add('role', { data: { name: 'editor', active: true, permissions: [{ resource: 'curriculum', read: true, write: false }] } })
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: String(role._id) } })
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'valid-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'some-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const service = AuthenticationService.getInstance()
+
+	await assert.rejects(
+		() => service.validate({ body: { token: 'valid-access-token', resource: 'curriculum', action: 'write' } }),
+		{ name: 'ForbiddenError' }
+	)
+})
+
+test('AuthenticationService.validate() — resource/action: "admin" gets no implicit bypass without an explicit grant', async () => {
+	const repository = MockRepository.getInstance()
+	const { DateTime } = luxon
+	const role = await repository.add('role', { data: { name: 'admin', active: true } })
+	const user = await repository.add('user', { data: { name: 'Root', email: 'root@example.com', password: 'hash', role: String(role._id) } })
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'admin-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'some-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const service = AuthenticationService.getInstance()
+
+	await assert.rejects(
+		() => service.validate({ body: { token: 'admin-access-token', resource: 'curriculum', action: 'read' } }),
+		{ name: 'ForbiddenError' }
+	)
+})
+
+test('AuthenticationService.validate() — resource/action: throws 400 when only one of the two is provided', async () => {
+	const repository = MockRepository.getInstance()
+	const { DateTime } = luxon
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'valid-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'some-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const service = AuthenticationService.getInstance()
+
+	await assert.rejects(
+		() => service.validate({ body: { token: 'valid-access-token', resource: 'curriculum' } }),
+		{ name: 'BadRequestError' }
+	)
+	await assert.rejects(
+		() => service.validate({ body: { token: 'valid-access-token', action: 'read' } }),
+		{ name: 'BadRequestError' }
+	)
+})
+
 test('AuthenticationService.validate() — throws when the access token does not exist', async () => {
 	const service = AuthenticationService.getInstance()
 

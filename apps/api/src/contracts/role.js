@@ -15,6 +15,11 @@ class RoleContract {
 			name: true,
 			active: true,
 			maxSessions: true,
+			permissions: [{
+				resource: true,
+				read: true,
+				write: true,
+			}],
 		}
 	}
 }
