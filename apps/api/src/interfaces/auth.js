@@ -57,7 +57,12 @@ class AuthInterfaces {
 		})
 
 		this.validateInterface = this.dataValidatorHandler.validate({
-			token: { type: this.types.string }
+			token: { type: this.types.string },
+			// Both optional, but required together (enforced in AuthenticationService.validate(),
+			// not here - zod has no clean "both or neither" primitive) - when present, the token's
+			// role is checked for permission to `action` on `resource`, not just validated.
+			resource: { type: this.types.string, optional: true },
+			action: { type: this.types.string, optional: true }
 		})
 	}
 

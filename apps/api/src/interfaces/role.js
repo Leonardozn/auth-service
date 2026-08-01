@@ -49,13 +49,33 @@ class RoleInterfaces {
 		this.createInterface = this.dataValidatorHandler.validate({
 			name: { type: this.types.string, optional: true },
 			active: { type: this.types.boolean, optional: true },
-			maxSessions: { type: this.types.number, optional: true }
+			maxSessions: { type: this.types.number, optional: true },
+			permissions: {
+				type: this.types.array,
+				contentType: this.types.object,
+				structure: {
+					resource: { type: this.types.string },
+					read: { type: this.types.boolean, optional: true },
+					write: { type: this.types.boolean, optional: true }
+				},
+				optional: true
+			}
 		})
 
 		this.updateInterface = this.dataValidatorHandler.validate({
 			name: { type: this.types.string, optional: true },
 			active: { type: this.types.boolean, optional: true },
 			maxSessions: { type: this.types.number, optional: true },
+			permissions: {
+				type: this.types.array,
+				contentType: this.types.object,
+				structure: {
+					resource: { type: this.types.string, optional: true },
+					read: { type: this.types.boolean, optional: true },
+					write: { type: this.types.boolean, optional: true }
+				},
+				optional: true
+			},
 			createdAt: { type: this.types.datetime, optional: true },
 			updatedAt: { type: this.types.datetime, optional: true }
 		})
@@ -65,6 +85,16 @@ class RoleInterfaces {
 			name: { type: this.types.string, optional: true, transform: true, allowAdvance: true },
 			active: { type: this.types.boolean, optional: true, transform: true, allowAdvance: true },
 			maxSessions: { type: this.types.number, optional: true, transform: true, allowAdvance: true },
+			permissions: {
+				type: this.types.array,
+				contentType: this.types.object,
+				structure: {
+					resource: { type: this.types.string, optional: true, transform: true, allowAdvance: true },
+					read: { type: this.types.boolean, optional: true, transform: true, allowAdvance: true },
+					write: { type: this.types.boolean, optional: true, transform: true, allowAdvance: true }
+				},
+				optional: true
+			},
 			createdAt: { type: this.types.datetime, optional: true, transform: true },
 			updatedAt: { type: this.types.datetime, optional: true, transform: true }
 		})
@@ -74,6 +104,17 @@ class RoleInterfaces {
 			name: { type: this.types.string, optional: true, isVirtual: true },
 			active: { type: this.types.boolean, optional: true, isVirtual: true },
 			maxSessions: { type: this.types.number, optional: true, isVirtual: true },
+			permissions: {
+				type: this.types.array,
+				contentType: this.types.object,
+				structure: {
+					resource: { type: this.types.string, optional: true, isVirtual: true },
+					read: { type: this.types.boolean, optional: true, isVirtual: true },
+					write: { type: this.types.boolean, optional: true, isVirtual: true }
+				},
+				optional: true,
+				canBeVirtual: true
+			},
 			createdAt: { type: this.types.datetime, optional: true, isVirtual: true },
 			updatedAt: { type: this.types.datetime, optional: true, isVirtual: true }
 		})

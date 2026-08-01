@@ -1,6 +1,21 @@
 const { AuthDbMongodb } = require('@auth-service/db-connections')
 const Schema = AuthDbMongodb.Schema
 
+const RolePermissionsItemSchema = new Schema({
+	resource: {
+		type: String,
+		required: true
+	},
+	read: {
+		type: Boolean
+	},
+	write: {
+		type: Boolean
+	}
+}, {
+	_id: false
+})
+
 class RoleModel {
 	/**
 	 * @private
@@ -23,6 +38,9 @@ class RoleModel {
 			},
 			maxSessions: {
 				type: Number
+			},
+			permissions: {
+				type: [RolePermissionsItemSchema]
 			}
 		}, {
 			collection: 'roles',

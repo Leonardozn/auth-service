@@ -371,6 +371,37 @@ test('auth routes — POST /auth/validate returns the user for a valid access to
 	}
 })
 
+test('auth routes — POST /auth/validate with resource/action grants or denies per the role\'s permissions list', async () => {
+	const EDITOR_ROLE_ID = '64b0c0ffee1234567890a1ee'
+	const EDITOR_ID = '64b0c0ffee1234567890a1ef'
+	const EDITOR_TOKEN = 'editor-access-token'
+	const app = await runApp({
+		MOCK_SEED_RECORDS: JSON.stringify([
+			{ schema: 'role', id: EDITOR_ROLE_ID, record: { name: 'editor', active: true, permissions: [{ resource: 'curriculum', read: true, write: false }] } },
+			{ schema: 'user', id: EDITOR_ID, record: { name: 'Edie', email: 'edie@example.com', password: LOGIN_PASSWORD_HASH, role: EDITOR_ROLE_ID, active: true, emailConfirmed: true } },
+			{ schema: 'session', id: '64b0c0ffee1234567890a1fa', record: { user: EDITOR_ID, accessToken: EDITOR_TOKEN, accessTokenExpiresAt: futureDate(), refreshToken: 'editor-refresh-token', refreshTokenExpiresAt: futureDate(5) } }
+		])
+	})
+
+	try {
+		const granted = await app.request('POST', `${app.path}/auth/validate`, { token: EDITOR_TOKEN, resource: 'curriculum', action: 'read' })
+		assert.equal(granted.status, 200)
+		assert.equal(granted.body.content.user.name, 'Edie')
+
+		const denied = await app.request('POST', `${app.path}/auth/validate`, { token: EDITOR_TOKEN, resource: 'curriculum', action: 'write' })
+		assert.equal(denied.status, 403)
+		assert.equal(denied.body.message, 'Not authorized to write "curriculum".')
+
+		const noEntry = await app.request('POST', `${app.path}/auth/validate`, { token: EDITOR_TOKEN, resource: 'certificate', action: 'read' })
+		assert.equal(noEntry.status, 403)
+
+		const onlyResource = await app.request('POST', `${app.path}/auth/validate`, { token: EDITOR_TOKEN, resource: 'curriculum' })
+		assert.equal(onlyResource.status, 400)
+	} finally {
+		await app.stop()
+	}
+})
+
 test('auth routes — POST /auth/validate rejects an invalid access token', async () => {
 	const app = await runApp()
 

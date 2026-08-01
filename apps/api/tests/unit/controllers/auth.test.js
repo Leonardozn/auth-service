@@ -285,6 +285,34 @@ test('AuthController.validate — returns 401 on an invalid access token', async
 	})
 })
 
+test('AuthController.validate — returns 403 when resource/action is provided and the role does not grant it', async () => {
+	const repository = MockRepository.getInstance()
+	const { DateTime } = luxon
+	const role = await repository.add('role', { data: { name: 'editor', active: true, permissions: [{ resource: 'curriculum', read: true, write: false }] } })
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: String(role._id) } })
+	await repository.add('session', {
+		data: {
+			user: String(user._id),
+			accessToken: 'valid-access-token',
+			accessTokenExpiresAt: DateTime.now().setZone('utc').plus({ minutes: 15 }).toJSDate(),
+			refreshToken: 'some-refresh-token',
+			refreshTokenExpiresAt: DateTime.now().setZone('utc').plus({ days: 5 }).toJSDate()
+		}
+	})
+	const controller = AuthController.getInstance()
+	const req = { body: { token: 'valid-access-token', resource: 'curriculum', action: 'write' } }
+	let capturedStatus, capturedBody
+	const res = {
+		status(code) { capturedStatus = code; return this },
+		json(body)   { capturedBody  = body;  return this },
+	}
+
+	await controller.validate(req, res)
+
+	assert.equal(capturedStatus, 403)
+	assert.equal(capturedBody.success, false)
+})
+
 test('AuthController.logout — returns 200 with null content when the session is revoked', async () => {
 	const repository = MockRepository.getInstance()
 	const { DateTime } = luxon

@@ -12,7 +12,8 @@ const luxon = DataValidatorHandler.getInstance().getLuxon()
 const SAMPLE = {
 		"name": "sample text",
 		"active": true,
-		"maxSessions": 3
+		"maxSessions": 3,
+		"permissions": [{ "resource": "sample text", "read": true, "write": false }]
 	}
 
 const SEED_ID = '64b0c0ffee1234567890abce'
