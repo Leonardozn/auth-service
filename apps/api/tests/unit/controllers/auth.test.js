@@ -62,7 +62,7 @@ test('AuthController.login — returns 200 with tokens and the user on valid cre
 	const hashed = dataEncryptHandler.encrypt('Sup3rSecret!')
 	await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: hashed, role: '64b0c0ffee1234567890abcd' } })
 	const controller = AuthController.getInstance()
-	const req = { body: { email: 'ada@example.com', password: 'Sup3rSecret!' } }
+	const req = { body: { email: 'ada@example.com', password: 'Sup3rSecret!' }, ip: '127.0.0.1', get: () => 'test-agent' }
 	let capturedStatus, capturedBody
 	const res = {
 		status(code) { capturedStatus = code; return this },
@@ -82,7 +82,7 @@ test('AuthController.login — returns 200 with tokens and the user on valid cre
 
 test('AuthController.login — returns 401 on invalid credentials', async () => {
 	const controller = AuthController.getInstance()
-	const req = { body: { email: 'missing@example.com', password: 'whatever' } }
+	const req = { body: { email: 'missing@example.com', password: 'whatever' }, ip: '127.0.0.1', get: () => 'test-agent' }
 	let capturedStatus, capturedBody
 	const res = {
 		status(code) { capturedStatus = code; return this },
@@ -98,6 +98,90 @@ test('AuthController.login — returns 401 on invalid credentials', async () => 
 		statusCode: 401,
 		content: null
 	})
+})
+
+test('AuthController.emailStatus — returns 200 with registered: true for an existing account', async () => {
+	const repository = MockRepository.getInstance()
+	await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	const controller = AuthController.getInstance()
+	const req = { body: { email: 'ada@example.com' } }
+	let capturedStatus, capturedBody
+	const res = {
+		status(code) { capturedStatus = code; return this },
+		json(body)   { capturedBody  = body;  return this },
+	}
+
+	await controller.emailStatus(req, res)
+
+	assert.equal(capturedStatus, 200)
+	assert.deepEqual(capturedBody.content, { registered: true })
+})
+
+test('AuthController.sendConfirmationCode — returns 404 for an email with no account', async () => {
+	const controller = AuthController.getInstance()
+	const req = { body: { email: 'nobody@example.com' } }
+	let capturedStatus, capturedBody
+	const res = {
+		status(code) { capturedStatus = code; return this },
+		json(body)   { capturedBody  = body;  return this },
+	}
+
+	await controller.sendConfirmationCode(req, res)
+
+	assert.equal(capturedStatus, 404)
+	assert.equal(capturedBody.success, false)
+})
+
+test('AuthController.verifyConfirmationCode — returns 200 with tokens and the confirmed user on a correct code', async () => {
+	const repository = MockRepository.getInstance()
+	const dataEncryptHandler = DataEncryptHandler.getInstance()
+	const { DateTime } = luxon
+	const role = await repository.add('role', { data: { name: 'user', active: true } })
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: String(role._id), active: true, emailConfirmed: false } })
+	await repository.add('confirmation_code', {
+		data: {
+			user: String(user._id), purpose: 'registration', codeHash: dataEncryptHandler.encrypt('482913'), medium: 'email',
+			expiresAt: DateTime.now().setZone('utc').plus({ minutes: 5 }).toJSDate(), used: false, attempts: 0
+		}
+	})
+	const controller = AuthController.getInstance()
+	const req = { body: { email: 'ada@example.com', code: '482913' }, ip: '127.0.0.1', get: () => 'test-agent' }
+	let capturedStatus, capturedBody
+	const res = {
+		status(code) { capturedStatus = code; return this },
+		json(body)   { capturedBody  = body;  return this },
+	}
+
+	await controller.verifyConfirmationCode(req, res)
+
+	assert.equal(capturedStatus, 200)
+	assert.equal(typeof capturedBody.content.token, 'string')
+	assert.equal(capturedBody.content.user.emailConfirmed, true)
+})
+
+test('AuthController.verifyConfirmationCode — returns 401 on an incorrect code', async () => {
+	const repository = MockRepository.getInstance()
+	const dataEncryptHandler = DataEncryptHandler.getInstance()
+	const { DateTime } = luxon
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd', emailConfirmed: false } })
+	await repository.add('confirmation_code', {
+		data: {
+			user: String(user._id), purpose: 'registration', codeHash: dataEncryptHandler.encrypt('482913'), medium: 'email',
+			expiresAt: DateTime.now().setZone('utc').plus({ minutes: 5 }).toJSDate(), used: false, attempts: 0
+		}
+	})
+	const controller = AuthController.getInstance()
+	const req = { body: { email: 'ada@example.com', code: '000000' }, ip: '127.0.0.1', get: () => 'test-agent' }
+	let capturedStatus, capturedBody
+	const res = {
+		status(code) { capturedStatus = code; return this },
+		json(body)   { capturedBody  = body;  return this },
+	}
+
+	await controller.verifyConfirmationCode(req, res)
+
+	assert.equal(capturedStatus, 401)
+	assert.equal(capturedBody.success, false)
 })
 
 test('AuthController.refresh — returns 200 with rotated tokens and the user on a valid refresh token', async () => {

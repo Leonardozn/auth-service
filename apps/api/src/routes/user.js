@@ -43,7 +43,7 @@ const UserController = require('../controllers/user')
  *         description: User created
  *         content:
  *           application/json:
- *             example: { success: true, message: "Success!", statusCode: 200, content: { _id: "5c94de2b1528d67de50e47b1", name: "Carl", email: "carl@example.com", role: "64b0c0ffee1234567890abcd", active: true } }
+ *             example: { success: true, message: "Success!", statusCode: 200, content: { _id: "5c94de2b1528d67de50e47b1", name: "Carl", email: "carl@example.com", role: "64b0c0ffee1234567890abcd", active: true, emailConfirmed: false } }
  *       400:
  *         description: |
  *           Validation error (missing/invalid field). Zod reports the generic message
@@ -109,7 +109,7 @@ const UserController = require('../controllers/user')
  *         description: List retrieved
  *         content:
  *           application/json:
- *             example: { success: true, message: "Success!", statusCode: 200, content: { count: 1, records: [{ _id: "64b0c0ffee1234567890abcf", name: "Ada", email: "ada@example.com", role: "64b0c0ffee1234567890abcd", active: true }] } }
+ *             example: { success: true, message: "Success!", statusCode: 200, content: { count: 1, records: [{ _id: "64b0c0ffee1234567890abcf", name: "Ada", email: "ada@example.com", role: "64b0c0ffee1234567890abcd", active: true, emailConfirmed: true }] } }
  *       400:
  *         description: Invalid filter, operator, or value type (e.g. an operator not supported by that field's type)
  *         content:
@@ -147,7 +147,7 @@ const UserController = require('../controllers/user')
  *         description: User found
  *         content:
  *           application/json:
- *             example: { success: true, message: "Success!", statusCode: 200, content: { _id: "64b0c0ffee1234567890abcf", name: "Ada", email: "ada@example.com", role: "64b0c0ffee1234567890abcd", active: true } }
+ *             example: { success: true, message: "Success!", statusCode: 200, content: { _id: "64b0c0ffee1234567890abcf", name: "Ada", email: "ada@example.com", role: "64b0c0ffee1234567890abcd", active: true, emailConfirmed: true } }
  *       400:
  *         description: No user matches the given id
  *         content:
@@ -194,7 +194,7 @@ const UserController = require('../controllers/user')
  *         description: User replaced
  *         content:
  *           application/json:
- *             example: { success: true, message: "Success!", statusCode: 200, content: { _id: "64b0c0ffee1234567890abcf", name: "Ada Updated", email: "ada@example.com", role: "64b0c0ffee1234567890abcd", active: true } }
+ *             example: { success: true, message: "Success!", statusCode: 200, content: { _id: "64b0c0ffee1234567890abcf", name: "Ada Updated", email: "ada@example.com", role: "64b0c0ffee1234567890abcd", active: true, emailConfirmed: true } }
  *       400:
  *         description: |
  *           Either a validation error (same "Invalid input" shape as `POST /user`), or no user
@@ -249,7 +249,7 @@ const UserController = require('../controllers/user')
  *         description: Profile updated
  *         content:
  *           application/json:
- *             example: { success: true, message: "Success!", statusCode: 200, content: { _id: "64b0c0ffee1234567890abcf", name: "Ada Self", email: "ada@example.com", role: "64b0c0ffee1234567890abcd", active: true } }
+ *             example: { success: true, message: "Success!", statusCode: 200, content: { _id: "64b0c0ffee1234567890abcf", name: "Ada Self", email: "ada@example.com", role: "64b0c0ffee1234567890abcd", active: true, emailConfirmed: true } }
  *       400:
  *         description: The new email is already taken by a different user
  *         content:

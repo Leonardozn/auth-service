@@ -1,6 +1,7 @@
 const { test, beforeEach } = require('node:test')
 const assert = require('node:assert/strict')
 const MockRepository = require('../../support/mock-repository-preload')
+const MockEmailManager = require('../../support/mock-email-manager-preload')
 const DataEncryptHandler = require('../../../src/handlers/dataEncrypt')
 const DataValidatorHandler = require('../../../src/handlers/dataValidator')
 const AuthenticationService = require('../../../src/services/authentication')
@@ -9,11 +10,14 @@ const luxon = DataValidatorHandler.getInstance().getLuxon()
 
 beforeEach(() => {
 	MockRepository.reset()
+	MockEmailManager.getInstance().send = async () => ({ id: 'mock-email-id' })
 })
 
-test('AuthenticationService.register() — creates a user with the default role and a hashed password', async () => {
+test('AuthenticationService.register() — creates an unconfirmed user, emails a code, and never opens a session', async () => {
 	const repository = MockRepository.getInstance()
 	await repository.add('role', { data: { name: 'user', active: true } })
+	let capturedSend
+	MockEmailManager.getInstance().send = async (config) => { capturedSend = config; return { id: 'mock-email-id' } }
 	const service = AuthenticationService.getInstance()
 
 	const result = await service.register({ body: { name: 'Ada', email: 'ada@example.com', password: 'Sup3rSecret!' } })
@@ -21,12 +25,40 @@ test('AuthenticationService.register() — creates a user with the default role 
 	assert.equal(result.user.name, 'Ada')
 	assert.equal(result.user.email, 'ada@example.com')
 	assert.equal(result.user.password, undefined)
+	assert.equal(result.user.emailConfirmed, false)
 	assert.ok(result.user.role)
+	assert.equal(typeof result.expiresInSeconds, 'number')
+	assert.ok(result.expiresInSeconds > 0)
+
+	assert.equal(capturedSend.to, 'ada@example.com')
+	assert.match(capturedSend.html, /\b\d{6}\b/)
+
+	const codes = await repository.list('confirmation_code', { query: { user: String(result.user._id), purpose: 'registration' } })
+	assert.equal(codes.count, 1)
+	assert.equal(codes.records[0].used, false)
+	assert.equal(codes.records[0].medium, 'email')
+
+	// Registering never opens a session - that only happens on verify-confirmation-code
+	const sessions = await repository.list('session', { query: {} })
+	assert.equal(sessions.count, 0)
 })
 
-test('AuthenticationService.register() — throws when the email is already registered', async () => {
+test('AuthenticationService.register() — throws when the email already belongs to a confirmed account', async () => {
 	const repository = MockRepository.getInstance()
 	await repository.add('role', { data: { name: 'user', active: true } })
+	await repository.add('user', { data: { name: 'Existing', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd', emailConfirmed: true } })
+	const service = AuthenticationService.getInstance()
+
+	await assert.rejects(
+		() => service.register({ body: { name: 'Ada', email: 'ada@example.com', password: 'Sup3rSecret!' } }),
+		{ name: 'BadRequestError' }
+	)
+})
+
+test('AuthenticationService.register() — throws when the email already belongs to a legacy account (no emailConfirmed field)', async () => {
+	const repository = MockRepository.getInstance()
+	await repository.add('role', { data: { name: 'user', active: true } })
+	// Predates this feature - emailConfirmed is absent, not false, and must be treated as confirmed
 	await repository.add('user', { data: { name: 'Existing', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
 	const service = AuthenticationService.getInstance()
 
@@ -34,6 +66,63 @@ test('AuthenticationService.register() — throws when the email is already regi
 		() => service.register({ body: { name: 'Ada', email: 'ada@example.com', password: 'Sup3rSecret!' } }),
 		{ name: 'BadRequestError' }
 	)
+})
+
+test('AuthenticationService.register() — replaces an unconfirmed account with the same email instead of rejecting it', async () => {
+	const repository = MockRepository.getInstance()
+	await repository.add('role', { data: { name: 'user', active: true } })
+	const oldUser = await repository.add('user', {
+		data: { name: 'First Try', email: 'ada@example.com', password: 'old-hash', role: '64b0c0ffee1234567890abcd', emailConfirmed: false }
+	})
+	const oldCode = await repository.add('confirmation_code', {
+		data: {
+			user: String(oldUser._id), purpose: 'registration', codeHash: 'irrelevant', medium: 'email',
+			expiresAt: luxon.DateTime.now().setZone('utc').minus({ minutes: 10 }).toJSDate(),
+			used: false, attempts: 0
+		}
+	})
+	// Mock add() always stamps createdAt to "now" - backdate it past the cooldown via update()
+	await repository.update('confirmation_code', { id: oldCode._id, data: { createdAt: luxon.DateTime.now().setZone('utc').minus({ hours: 1 }).toJSDate() } })
+	const service = AuthenticationService.getInstance()
+
+	const result = await service.register({ body: { name: 'Ada', email: 'ada@example.com', password: 'Sup3rSecret!' } })
+
+	assert.notEqual(String(result.user._id), String(oldUser._id))
+
+	const users = await repository.list('user', { query: { email: 'ada@example.com' } })
+	assert.equal(users.count, 1)
+	assert.equal(String(users.records[0]._id), String(result.user._id))
+
+	// The old account's confirmation codes are gone with it
+	const oldCodes = await repository.list('confirmation_code', { query: { user: String(oldUser._id) } })
+	assert.equal(oldCodes.count, 0)
+})
+
+test('AuthenticationService.register() — throws 429 when replacing an unconfirmed account too soon after its last code', async () => {
+	const repository = MockRepository.getInstance()
+	await repository.add('role', { data: { name: 'user', active: true } })
+	const oldUser = await repository.add('user', {
+		data: { name: 'First Try', email: 'ada@example.com', password: 'old-hash', role: '64b0c0ffee1234567890abcd', emailConfirmed: false }
+	})
+	// createdAt just now - well within CONFIRMATION_CODE_RESEND_COOLDOWN's 60s default
+	await repository.add('confirmation_code', {
+		data: {
+			user: String(oldUser._id), purpose: 'registration', codeHash: 'irrelevant', medium: 'email',
+			expiresAt: luxon.DateTime.now().setZone('utc').plus({ minutes: 5 }).toJSDate(),
+			used: false, attempts: 0
+		}
+	})
+	const service = AuthenticationService.getInstance()
+
+	await assert.rejects(
+		() => service.register({ body: { name: 'Ada', email: 'ada@example.com', password: 'Sup3rSecret!' } }),
+		{ name: 'TooManyRequestsError' }
+	)
+
+	// Nothing was replaced - the old account is still there, untouched
+	const users = await repository.list('user', { query: { email: 'ada@example.com' } })
+	assert.equal(users.count, 1)
+	assert.equal(String(users.records[0]._id), String(oldUser._id))
 })
 
 test('AuthenticationService.register() — throws when no default role is configured', async () => {
@@ -124,6 +213,65 @@ test('AuthenticationService.login() — throws 403 when the account is deactivat
 		() => service.login({ body: { email: 'ada@example.com', password: 'Sup3rSecret!' } }),
 		{ name: 'ForbiddenError' }
 	)
+})
+
+test('AuthenticationService.login() — throws 403 with a distinct message when the email is not confirmed', async () => {
+	const repository = MockRepository.getInstance()
+	const dataEncryptHandler = DataEncryptHandler.getInstance()
+	const hashed = dataEncryptHandler.encrypt('Sup3rSecret!')
+	await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: hashed, role: '64b0c0ffee1234567890abcd', emailConfirmed: false } })
+	const service = AuthenticationService.getInstance()
+
+	await assert.rejects(
+		() => service.login({ body: { email: 'ada@example.com', password: 'Sup3rSecret!' } }),
+		(error) => {
+			assert.equal(error.name, 'ForbiddenError')
+			assert.notEqual(error.message, 'Account is deactivated.')
+			return true
+		}
+	)
+})
+
+test('AuthenticationService.login() — writes a LoginRecord on success', async () => {
+	const repository = MockRepository.getInstance()
+	const dataEncryptHandler = DataEncryptHandler.getInstance()
+	const hashed = dataEncryptHandler.encrypt('Sup3rSecret!')
+	const user = await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: hashed, role: '64b0c0ffee1234567890abcd' } })
+	const service = AuthenticationService.getInstance()
+
+	await service.login({ body: { email: 'ada@example.com', password: 'Sup3rSecret!' }, ip: '127.0.0.1', userAgent: 'test-agent' })
+
+	const records = await repository.list('login_record', { query: { email: 'ada@example.com' } })
+	assert.equal(records.count, 1)
+	assert.equal(records.records[0].result, 'success')
+	assert.equal(records.records[0].method, 'password')
+	assert.equal(String(records.records[0].user), String(user._id))
+	assert.equal(records.records[0].ip, '127.0.0.1')
+	assert.equal(records.records[0].userAgent, 'test-agent')
+})
+
+test('AuthenticationService.login() — writes a LoginRecord on failure, even against an email with no account', async () => {
+	const repository = MockRepository.getInstance()
+	const service = AuthenticationService.getInstance()
+
+	await assert.rejects(() => service.login({ body: { email: 'missing@example.com', password: 'whatever' } }))
+
+	const records = await repository.list('login_record', { query: { email: 'missing@example.com' } })
+	assert.equal(records.count, 1)
+	assert.equal(records.records[0].result, 'failed')
+	assert.equal(records.records[0].user, undefined)
+})
+
+test('AuthenticationService.login() — caps LoginRecords per email at LOGIN_RECORD_MAX_PER_EMAIL', async () => {
+	const repository = MockRepository.getInstance()
+	const service = AuthenticationService.getInstance()
+
+	for (let i = 0; i < 12; i++) {
+		await assert.rejects(() => service.login({ body: { email: 'flood@example.com', password: 'whatever' } }))
+	}
+
+	const records = await repository.list('login_record', { query: { email: 'flood@example.com' } })
+	assert.equal(records.count, 10)
 })
 
 test('AuthenticationService.refresh() — rotates the tokens and returns the user on a valid refresh token', async () => {
