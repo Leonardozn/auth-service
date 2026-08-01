@@ -3,6 +3,8 @@ const UserService = require('./user')
 const AuthInterfaces = require('../interfaces/auth')
 const DataEncryptHandler = require('../handlers/dataEncrypt')
 const DataValidatorHandler = require('../handlers/dataValidator')
+const EmailManagerHandler = require('../handlers/emailManager')
+const DbConnectionHandler = require('../handlers/dbConnections')
 const envVariables = require('../handlers/envVariables')
 const { ForbiddenError } = require('../handlers/handleErrors')
 const ResolveDefaultRole = require('./commands/resolveDefaultRole')
@@ -13,11 +15,22 @@ const VerifyCredentials = require('./commands/verifyCredentials')
 const IssueTokenPair = require('./commands/issueTokenPair')
 const GenerateOpaqueToken = require('./commands/generateOpaqueToken')
 const ComputeExpiryDate = require('./commands/computeExpiryDate')
+const ComputeSecondsUntil = require('./commands/computeSecondsUntil')
+const ParseDurationSeconds = require('./commands/parseDurationSeconds')
 const FindSessionByToken = require('./commands/findSessionByToken')
 const ExtractBearerToken = require('./commands/extractBearerToken')
 const RemoveSessionByToken = require('./commands/removeSessionByToken')
 const EnforceSessionLimit = require('./commands/enforceSessionLimit')
 const ResolveRoleName = require('./commands/resolveRoleName')
+const DeleteResourcesByUser = require('./commands/deleteResourcesByUser')
+const GenerateNumericCode = require('./commands/generateNumericCode')
+const EnforceConfirmationCodeCooldown = require('./commands/enforceConfirmationCodeCooldown')
+const InvalidatePendingConfirmationCodes = require('./commands/invalidatePendingConfirmationCodes')
+const IssueConfirmationCode = require('./commands/issueConfirmationCode')
+const SendConfirmationCodeEmail = require('./commands/sendConfirmationCodeEmail')
+const CreateSessionForUser = require('./commands/createSessionForUser')
+const EnforceLoginRecordLimit = require('./commands/enforceLoginRecordLimit')
+const WriteLoginRecord = require('./commands/writeLoginRecord')
 
 class AuthenticationService {
 	/**
@@ -32,6 +45,8 @@ class AuthenticationService {
 		this.authInterface = AuthInterfaces.getInstance()
 		this.dataEncryptHandler = DataEncryptHandler.getInstance()
 		this.luxon = DataValidatorHandler.getInstance().getLuxon()
+		this.emailManagerHandler = EmailManagerHandler.getInstance()
+		this.dbConnectionHandler = DbConnectionHandler.getInstance()
 
 		this.resolveDefaultRole = ResolveDefaultRole.getInstance()
 		this.checkEmailAvailable = CheckEmailAvailable.getInstance()
@@ -41,11 +56,22 @@ class AuthenticationService {
 		this.issueTokenPair = IssueTokenPair.getInstance()
 		this.generateOpaqueToken = GenerateOpaqueToken.getInstance()
 		this.computeExpiryDate = ComputeExpiryDate.getInstance()
+		this.computeSecondsUntil = ComputeSecondsUntil.getInstance()
+		this.parseDurationSeconds = ParseDurationSeconds.getInstance()
 		this.findSessionByToken = FindSessionByToken.getInstance()
 		this.extractBearerToken = ExtractBearerToken.getInstance()
 		this.removeSessionByToken = RemoveSessionByToken.getInstance()
 		this.enforceSessionLimit = EnforceSessionLimit.getInstance()
 		this.resolveRoleName = ResolveRoleName.getInstance()
+		this.deleteResourcesByUser = DeleteResourcesByUser.getInstance()
+		this.generateNumericCode = GenerateNumericCode.getInstance()
+		this.enforceConfirmationCodeCooldown = EnforceConfirmationCodeCooldown.getInstance()
+		this.invalidatePendingConfirmationCodes = InvalidatePendingConfirmationCodes.getInstance()
+		this.issueConfirmationCode = IssueConfirmationCode.getInstance()
+		this.sendConfirmationCodeEmail = SendConfirmationCodeEmail.getInstance()
+		this.createSessionForUser = CreateSessionForUser.getInstance()
+		this.enforceLoginRecordLimit = EnforceLoginRecordLimit.getInstance()
+		this.writeLoginRecord = WriteLoginRecord.getInstance()
 	}
 
 	static getInstance() {
@@ -62,39 +88,172 @@ class AuthenticationService {
 		// Step 2: resolve the default "user" role new registrations are assigned
 		const role = await this.resolveDefaultRole.execute({ repository: this.repository })
 
-		// Step 3: reject registration if the email is already taken
-		await this.checkEmailAvailable.execute({ repository: this.repository, email })
+		// Step 3: does this email already have an account? An unconfirmed one never had a session
+		// and never could have operated (login rejects unconfirmed accounts), so there is nothing to
+		// protect - registering again replaces it instead of failing with "already registered".
+		// A confirmed account (or a legacy one predating this field, emailConfirmed === undefined)
+		// still blocks registration exactly as before.
+		const existingResult = await this.repository.list('user', { query: { email } })
+		const existingUser = existingResult.records[0]
 
-		// Step 4: hash the plain-text password before persisting it
+		let existingUnconfirmedUser = null
+		if (existingUser) {
+			if (existingUser.emailConfirmed === false) {
+				existingUnconfirmedUser = existingUser
+			} else {
+				await this.checkEmailAvailable.execute({ repository: this.repository, email })
+			}
+		}
+
+		// Step 4: replacing an unconfirmed account still has to respect the resend cooldown, checked
+		// against the code most recently sent to the account being replaced - if this were skipped,
+		// or checked against the brand-new account instead (which by definition never had a code),
+		// someone could register over and over with a stranger's email and flood their mailbox, since
+		// every registration attempt sends a new code.
+		const cooldownSeconds = this.parseDurationSeconds.execute({ duration: envVariables.CONFIRMATION_CODE_RESEND_COOLDOWN || '60s' })
+		if (existingUnconfirmedUser) {
+			await this.enforceConfirmationCodeCooldown.execute({
+				repository: this.repository,
+				luxon: this.luxon,
+				userId: existingUnconfirmedUser._id,
+				purpose: 'registration',
+				cooldownSeconds
+			})
+		}
+
+		// Step 5: hash the plain-text password before persisting it
 		const hashedPassword = await this.hashPassword.execute({ dataEncryptHandler: this.dataEncryptHandler, password })
 
-		// Step 5: create the user (active by default), reusing the User model's own service method -
-		// trustedRoleAssignment skips the admin check since this role came from resolveDefaultRole, not the client
-		const user = await this.userService.add({ body: { name, email, password: hashedPassword, role: String(role._id), active: true }, trustedRoleAssignment: true })
+		// Step 6: create the account (replacing the unconfirmed one, if any) and issue its
+		// confirmation code together - two collections (user, confirmation_code), so this runs
+		// inside a transaction (data-transactions-multi-write).
+		const { authDbMongodb } = this.dbConnectionHandler.getConnection()
+		const dbSession = await authDbMongodb.startSession()
+		const unconfirmedExpiresAt = this.computeExpiryDate.execute({ luxon: this.luxon, duration: envVariables.UNCONFIRMED_ACCOUNT_TTL || '7d' })
 
-		return { user }
+		let user, code, expiresAt
+		try {
+			await dbSession.withTransaction(async () => {
+				if (existingUnconfirmedUser) {
+					await this.deleteResourcesByUser.execute({ repository: this.repository, schemaName: 'confirmation_code', userId: existingUnconfirmedUser._id, options: { session: dbSession } })
+					await this.repository.remove('user', { id: existingUnconfirmedUser._id, options: { session: dbSession } })
+				}
+
+				// trustedRoleAssignment skips the admin check since this role came from resolveDefaultRole, not the client
+				user = await this.userService.add({
+					body: { name, email, password: hashedPassword, role: String(role._id), active: true, emailConfirmed: false, unconfirmedExpiresAt },
+					trustedRoleAssignment: true,
+					options: { session: dbSession }
+				})
+
+				const issued = await this.issueConfirmationCode.execute({
+					repository: this.repository,
+					luxon: this.luxon,
+					dataEncryptHandler: this.dataEncryptHandler,
+					generateNumericCode: this.generateNumericCode,
+					computeExpiryDate: this.computeExpiryDate,
+					invalidatePendingConfirmationCodes: this.invalidatePendingConfirmationCodes,
+					enforceConfirmationCodeCooldown: this.enforceConfirmationCodeCooldown,
+					userId: user._id,
+					purpose: 'registration',
+					medium: 'email',
+					// The cooldown was already checked in Step 4, against the account being replaced -
+					// the brand-new account itself never had a code, so re-checking here would always
+					// pass regardless, and skipping it explicitly documents that the gate already happened.
+					skipCooldownCheck: true,
+					codeDuration: envVariables.CONFIRMATION_CODE_DEFAULT_TIME || '5m',
+					options: { session: dbSession }
+				})
+				code = issued.code
+				expiresAt = issued.expiresAt
+			})
+		} finally {
+			dbSession.endSession()
+		}
+
+		const expiresInSeconds = this.computeSecondsUntil.execute({ luxon: this.luxon, date: expiresAt })
+
+		// Step 7: email the code after the transaction commits, never inside it - a retried
+		// transaction callback must not risk sending the email twice. No try/catch, same contract as
+		// send-confirmation-code: a Resend failure surfaces as 502.
+		await this.sendConfirmationCodeEmail.execute({
+			emailManagerHandler: this.emailManagerHandler,
+			apiUrl: envVariables.RESEND_API_URL || 'https://api.resend.com/emails',
+			resendToken: envVariables.RESEND_TOKEN,
+			from: envVariables.ADMIN_MAIL_FROM || 'onboarding@resend.dev',
+			to: email,
+			code,
+			expiresInSeconds,
+			brandName: envVariables.BRAND_NAME || 'Your account',
+			brandLogoUrl: envVariables.BRAND_LOGO_URL || ''
+		})
+
+		// No session is opened here, and no LoginRecord is written - registering isn't logging in;
+		// the session comes from POST /auth/verify-confirmation-code.
+		return { user, expiresInSeconds }
 	}
 
 	async login(config = {}) {
 		const { email, password } = this.authInterface.getLoginInterface().parse(config.body)
+		const { ip, userAgent } = config
+		const maxPerEmail = Number(envVariables.LOGIN_RECORD_MAX_PER_EMAIL) || 10
 
-		// Step 1: find the user and verify their password
-		const user = await this.verifyCredentials.execute({ repository: this.repository, dataEncryptHandler: this.dataEncryptHandler, email, password })
+		let user
+		try {
+			// Step 1: find the user and verify their password
+			user = await this.verifyCredentials.execute({ repository: this.repository, dataEncryptHandler: this.dataEncryptHandler, email, password })
 
-		// Step 2: a deactivated account may not start a new session
-		if (user.active === false) throw new ForbiddenError('Account is deactivated.')
+			// Step 2: an unconfirmed email may not start a session either - a distinct message from
+			// "invalid credentials" so the client can route to the code screen instead of accusing the
+			// user of a wrong password.
+			if (user.emailConfirmed === false) throw new ForbiddenError('Email not confirmed.')
 
-		// Step 3: evict the oldest session if the user's role has a configured session limit -
-		// userId must stay the raw ObjectId user._id already is (not stringified): repository.list()
-		// runs a Mongo aggregation, which never casts query values against the schema the way
-		// find()/save() do, so a string here would silently match zero sessions against a real DB.
-		await this.enforceSessionLimit.execute({ repository: this.repository, userId: user._id, roleId: user.role })
+			// Step 3: a deactivated account may not start a new session
+			if (user.active === false) throw new ForbiddenError('Account is deactivated.')
+		} catch (error) {
+			// Every attempt is audited, success or failure - including "no such user", where `user`
+			// stays undefined and the record is kept unassociated (LoginRecord.user is optional).
+			await this.writeLoginRecord.execute({
+				repository: this.repository,
+				enforceLoginRecordLimit: this.enforceLoginRecordLimit,
+				user: user ? user._id : null,
+				email,
+				result: 'failed',
+				method: 'password',
+				ip,
+				userAgent,
+				maxPerEmail
+			})
+			throw error
+		}
 
-		// Step 4: issue a fresh access/refresh token pair
-		const tokenPair = this.issueTokenPair.execute(this._tokenPairConfig())
+		// Step 4: evict the oldest session if the user's role has a configured session limit, and
+		// issue the new one - same shared command verify-confirmation-code() also uses.
+		const tokenPair = await this.createSessionForUser.execute({
+			repository: this.repository,
+			enforceSessionLimit: this.enforceSessionLimit,
+			issueTokenPair: this.issueTokenPair,
+			generateOpaqueToken: this.generateOpaqueToken,
+			computeExpiryDate: this.computeExpiryDate,
+			luxon: this.luxon,
+			userId: user._id,
+			roleId: user.role,
+			sessionTokenDuration: envVariables.SESSION_TOKEN_DEFAULT_TIME || '15m',
+			refreshTokenDuration: envVariables.REFRESH_TOKEN_DEFAULT_TIME || '5d'
+		})
 
-		// Step 5: persist a new session for this login
-		await this.repository.add('session', { data: { user: String(user._id), ...tokenPair } })
+		// Step 5: audit the successful attempt
+		await this.writeLoginRecord.execute({
+			repository: this.repository,
+			enforceLoginRecordLimit: this.enforceLoginRecordLimit,
+			user: user._id,
+			email,
+			result: 'success',
+			method: 'password',
+			ip,
+			userAgent,
+			maxPerEmail
+		})
 
 		return {
 			token: tokenPair.accessToken,

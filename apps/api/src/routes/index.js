@@ -5,6 +5,8 @@ const UserRouter = require('./user')
 const RoleRouter = require('./role')
 const HealthRouter = require('./health')
 const AuthRouter = require('./auth')
+const Confirmation_codeRouter = require('./confirmation_code')
+const Login_recordRouter = require('./login_record')
 
 class Routes {	/**
 	 * @private
@@ -48,6 +50,16 @@ class Routes {	/**
 	 */
 	authRouter
 
+	/**
+	 * @private
+	 */
+	confirmation_codeRouter
+
+	/**
+	 * @private
+	 */
+	login_recordRouter
+
 	constructor() {
 		this.healthRouter = HealthRouter.getInstance().getRoutes()
 		this.roleRouter = RoleRouter.getInstance().getRoutes()
@@ -56,6 +68,8 @@ class Routes {	/**
 		this.password_reset_tokenRouter = Password_reset_tokenRouter.getInstance().getRoutes()
 		this.change_password_verification_codeRouter = Change_password_verification_codeRouter.getInstance().getRoutes()
 		this.authRouter = AuthRouter.getInstance().getRoutes()
+		this.confirmation_codeRouter = Confirmation_codeRouter.getInstance().getRoutes()
+		this.login_recordRouter = Login_recordRouter.getInstance().getRoutes()
 	}
 
 	static getInstance() {
@@ -71,7 +85,9 @@ class Routes {	/**
 			userRouter: this.userRouter,
 			roleRouter: this.roleRouter,
 			healthRouter: this.healthRouter,
-			authRouter: this.authRouter
+			authRouter: this.authRouter,
+			confirmation_codeRouter: this.confirmation_codeRouter,
+			login_recordRouter: this.login_recordRouter
 		}
 	}
 }
