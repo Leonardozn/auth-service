@@ -47,6 +47,26 @@ function adminSeedEnv() {
 	}
 }
 
+// A plain customer: authenticated, but neither an admin nor the owner of SEED_ID. This is the
+// caller the raw /user endpoints must turn away - the storefront hands one of these to every
+// visitor who registers, so "has a session" can never be the bar for reading the user base.
+const CUSTOMER_ROLE_ID = '64b0c0ffee1234567890aeca'
+const CUSTOMER_ID = '64b0c0ffee1234567890aecb'
+const CUSTOMER_TOKEN = 'customer-access-token'
+
+function adminAndCustomerSeedEnv() {
+	return {
+		MOCK_SEED_RECORDS: JSON.stringify([
+			{ schema: 'role', id: ADMIN_ROLE_ID, record: { name: 'admin', active: true } },
+			{ schema: 'user', id: ADMIN_ID, record: { name: 'Root', email: 'root@example.com', password: 'hash', role: ADMIN_ROLE_ID, active: true } },
+			{ schema: 'session', id: '64b0c0ffee1234567890adcf', record: { user: ADMIN_ID, accessToken: ADMIN_TOKEN, accessTokenExpiresAt: futureDate(), refreshToken: 'admin-refresh-token', refreshTokenExpiresAt: futureDate(5) } },
+			{ schema: 'role', id: CUSTOMER_ROLE_ID, record: { name: 'user', active: true } },
+			{ schema: 'user', id: CUSTOMER_ID, record: { name: 'Customer', email: 'customer@example.com', password: 'hash', role: CUSTOMER_ROLE_ID, active: true } },
+			{ schema: 'session', id: '64b0c0ffee1234567890aecc', record: { user: CUSTOMER_ID, accessToken: CUSTOMER_TOKEN, accessTokenExpiresAt: futureDate(), refreshToken: 'customer-refresh-token', refreshTokenExpiresAt: futureDate(5) } }
+		])
+	}
+}
+
 test('user routes — POST creates a record, as an admin', async () => {
 	const app = await runApp(adminSeedEnv())
 
@@ -73,7 +93,7 @@ test('user routes — POST rejects assigning a role without an admin session', a
 	}
 })
 
-test('user routes — GET by id returns the seeded record, for any authenticated session', async () => {
+test('user routes — GET by id returns the seeded record, as an admin', async () => {
 	const app = await runApp({ ...seededEnv(), ...adminSeedEnv() })
 
 	try {
@@ -111,7 +131,7 @@ test('user routes — GET by id returns 400 when the record does not exist', asy
 	}
 })
 
-test('user routes — GET list returns the envelope shape, for any authenticated session', async () => {
+test('user routes — GET list returns the envelope shape, as an admin', async () => {
 	const app = await runApp({ ...seededEnv(), ...adminSeedEnv() })
 
 	try {
@@ -121,6 +141,76 @@ test('user routes — GET list returns the envelope shape, for any authenticated
 		// +1 for the seeded admin's own account, alongside the SEED_ID record.
 		assert.equal(res.body.content.count, 2)
 		assert.deepEqual(res.body.content.records.find(r => r._id === SEED_ID), EXPECTED)
+	} finally {
+		await app.stop()
+	}
+})
+
+test('user routes — GET by id forbids a customer reading another account', async () => {
+	const app = await runApp({ ...seededEnv(), ...adminAndCustomerSeedEnv() })
+
+	try {
+		const res = await app.request('GET', `${app.path}/user/${SEED_ID}`, undefined, { Authorization: `Bearer ${CUSTOMER_TOKEN}` })
+
+		assert.equal(res.status, 403)
+	} finally {
+		await app.stop()
+	}
+})
+
+test('user routes — GET by id allows a customer to read their own account', async () => {
+	const app = await runApp({ ...seededEnv(), ...adminAndCustomerSeedEnv() })
+
+	try {
+		const res = await app.request('GET', `${app.path}/user/${CUSTOMER_ID}`, undefined, { Authorization: `Bearer ${CUSTOMER_TOKEN}` })
+
+		assert.equal(res.status, 200)
+		assert.equal(res.body.content._id, CUSTOMER_ID)
+	} finally {
+		await app.stop()
+	}
+})
+
+test('user routes — GET list forbids a customer listing the user base', async () => {
+	const app = await runApp({ ...seededEnv(), ...adminAndCustomerSeedEnv() })
+
+	try {
+		const res = await app.request('GET', `${app.path}/user`, undefined, { Authorization: `Bearer ${CUSTOMER_TOKEN}` })
+
+		assert.equal(res.status, 403)
+	} finally {
+		await app.stop()
+	}
+})
+
+// Account takeover: without the ownership check, a customer could point another account's email
+// at their own inbox and then claim it through POST /auth/forgot-password.
+test('user routes — PUT forbids a customer replacing another account', async () => {
+	const app = await runApp({ ...seededEnv(), ...adminAndCustomerSeedEnv() })
+
+	try {
+		const { role: _role, ...withoutRole } = SAMPLE
+		const res = await app.request(
+			'PUT',
+			`${app.path}/user/${SEED_ID}`,
+			{ ...withoutRole, email: 'attacker@example.com' },
+			{ Authorization: `Bearer ${CUSTOMER_TOKEN}` }
+		)
+
+		assert.equal(res.status, 403)
+	} finally {
+		await app.stop()
+	}
+})
+
+test('user routes — POST forbids a customer creating an account without a role', async () => {
+	const app = await runApp(adminAndCustomerSeedEnv())
+
+	try {
+		const { role: _role, ...withoutRole } = SAMPLE
+		const res = await app.request('POST', `${app.path}/user`, withoutRole, { Authorization: `Bearer ${CUSTOMER_TOKEN}` })
+
+		assert.equal(res.status, 403)
 	} finally {
 		await app.stop()
 	}

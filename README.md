@@ -165,10 +165,16 @@ one uppercase letter, one digit and one special character
 
 | Method | Path | Auth | Notes |
 | ------ | ---- | ---- | ----- |
-| POST | `/user` | Bearer | Creates a user; setting `role` additionally requires an admin session |
-| GET | `/user` | Bearer (any role) | Paginated list with `query[field]`/`query[field][operator]` filtering, `sort`, `size`, `page`, `relations[role]` |
-| GET | `/user/:id` | Bearer (any role) | Get by id |
-| PUT | `/user/:id` | Bearer | Full replace; setting `role` requires admin |
+| POST | `/user` | Bearer + admin | Creates a user directly (self-service signup is `POST /auth/register`); setting `role` also requires admin |
+| GET | `/user` | Bearer + admin | Paginated list with `query[field]`/`query[field][operator]` filtering, `sort`, `size`, `page`, `relations[role]` |
+| GET | `/user/:id` | Bearer + owner or admin | Get by id |
+| PUT | `/user/:id` | Bearer + owner or admin | Full replace; setting `role` requires admin |
+
+> A session alone is never enough on these routes. Consumers of this service hand a session to
+> every visitor who registers, so "authenticated" describes the general public, not staff. `GET`
+> list is admin-only because a listing names no account, so ownership is not an option there;
+> `PUT` needs ownership because its body accepts `email`, and without that check a caller could
+> point another account at their own inbox and claim it through `POST /auth/forgot-password`.
 | PATCH | `/user/:id` | Bearer | Profile edit (account management, not raw field update) - only `name`/`email`/`active`; caller must own the account or be admin; `active` is ignored unless the caller is admin |
 | DELETE | `/user/:id` | Bearer + admin | Delete |
 
