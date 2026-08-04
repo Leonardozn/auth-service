@@ -48,11 +48,15 @@ test('role create — complete payload round-trips through the full envelope', a
 		const res = await app.request('POST', `${app.path}/role`, RECORDS[0], ADMIN_HEADERS)
 
 		assert.equal(res.status, 200)
+		// El contrato de Role expone _id: sin él, PUT/PATCH/DELETE de /role no se pueden invocar
+		// desde ningún cliente. Lo genera el servidor al crear, así que se compara contra el que
+		// devolvió y no contra un valor fijo.
+		assert.equal(typeof res.body.content._id, 'string')
 		assert.deepEqual(res.body, {
 			success: true,
 			message: 'Success!',
 			statusCode: 200,
-			content: RECORDS[0]
+			content: { ...RECORDS[0], _id: res.body.content._id }
 		})
 	} finally {
 		await app.stop()
