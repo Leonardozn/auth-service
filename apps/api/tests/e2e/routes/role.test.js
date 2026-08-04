@@ -11,6 +11,10 @@ const SAMPLE = {
 
 const SEED_ID = '64b0c0ffee1234567890abcf'
 
+// El contrato de Role expone _id: sin él ningún cliente puede editar ni eliminar un rol, porque
+// PUT/PATCH/DELETE piden el id en la ruta.
+const EXPECTED = { _id: SEED_ID, ...SAMPLE }
+
 function seededEnv() {
 	return {
 		MOCK_SEED_SCHEMA: 'role',
@@ -72,7 +76,7 @@ test('role routes — GET by id returns the seeded record, for any authenticated
 		const res = await app.request('GET', `${app.path}/role/${SEED_ID}`, undefined, { Authorization: `Bearer ${ADMIN_TOKEN}` })
 
 		assert.equal(res.status, 200)
-		assert.deepEqual(res.body.content, SAMPLE)
+		assert.deepEqual(res.body.content, EXPECTED)
 	} finally {
 		await app.stop()
 	}
@@ -137,7 +141,7 @@ test('role routes — PATCH updates the seeded record, as an admin', async () =>
 		const res = await app.request('PATCH', `${app.path}/role/${SEED_ID}`, SAMPLE, { Authorization: `Bearer ${ADMIN_TOKEN}` })
 
 		assert.equal(res.status, 200)
-		assert.deepEqual(res.body.content, SAMPLE)
+		assert.deepEqual(res.body.content, EXPECTED)
 	} finally {
 		await app.stop()
 	}
@@ -162,7 +166,7 @@ test('role routes — PUT replaces the seeded record, as an admin', async () => 
 		const res = await app.request('PUT', `${app.path}/role/${SEED_ID}`, SAMPLE, { Authorization: `Bearer ${ADMIN_TOKEN}` })
 
 		assert.equal(res.status, 200)
-		assert.deepEqual(res.body.content, SAMPLE)
+		assert.deepEqual(res.body.content, EXPECTED)
 	} finally {
 		await app.stop()
 	}
