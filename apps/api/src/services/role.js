@@ -11,7 +11,7 @@ const crypto = require('crypto')
 const envVariables = require('../handlers/envVariables')
 const ExtractBearerToken = require('./commands/extractBearerToken')
 const FindSessionByToken = require('./commands/findSessionByToken')
-const RequireAdminUser = require('./commands/requireAdminUser')
+const AuthorizeAdminOrPermission = require('./commands/authorizeAdminOrPermission')
 
 class RoleService {
 	/**
@@ -60,7 +60,7 @@ class RoleService {
 		this.luxon = DataValidatorHandler.getInstance().getLuxon()
 		this.extractBearerToken = ExtractBearerToken.getInstance()
 		this.findSessionByToken = FindSessionByToken.getInstance()
-		this.requireAdminUser = RequireAdminUser.getInstance()
+		this.authorizeAdminOrPermission = AuthorizeAdminOrPermission.getInstance()
 	}
 
 	static getInstance() {
@@ -362,8 +362,12 @@ class RoleService {
 		return repositoryResponse
 	}
 
-	// Authenticates the caller from the access token and requires an admin role - Role is a
-	// platform-wide RBAC primitive, so every mutation on it is admin-only, unconditionally.
+	// Authenticates the caller and authorizes the mutation: either the Role is named 'admin', or it
+	// grants write on the 'role' resource.
+	//
+	// Reading (findOne/list) stays open to any authenticated session on purpose: a consumer has to
+	// be able to read its OWN role to know what it may do, and requiring a permission for that
+	// would be circular - no one could ever load the permissions that would let them load it.
 	async _requireAdminSession(authorizationHeader) {
 		const token = this.extractBearerToken.execute({ authorizationHeader })
 		const session = await this.findSessionByToken.execute({
@@ -373,7 +377,12 @@ class RoleService {
 			expiryField: 'accessTokenExpiresAt',
 			token
 		})
-		await this.requireAdminUser.execute({ repository: this.repository, userId: session.user })
+		await this.authorizeAdminOrPermission.execute({
+			repository: this.repository,
+			userId: session.user,
+			resource: 'role',
+			action: 'write'
+		})
 	}
 
 	// Authenticates the caller from the access token, without requiring any particular role -

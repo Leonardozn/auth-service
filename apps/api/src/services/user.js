@@ -11,8 +11,9 @@ const crypto = require('crypto')
 const envVariables = require('../handlers/envVariables')
 const ExtractBearerToken = require('./commands/extractBearerToken')
 const FindSessionByToken = require('./commands/findSessionByToken')
-const RequireAdminUser = require('./commands/requireAdminUser')
-const AuthorizeAccountAccess = require('./commands/authorizeAccountAccess')
+const AuthorizeAdminOrPermission = require('./commands/authorizeAdminOrPermission')
+const DataEncryptHandler = require('../handlers/dataEncrypt')
+const HashPassword = require('./commands/hashPassword')
 
 class UserService {
 	/**
@@ -61,8 +62,9 @@ class UserService {
 		this.luxon = DataValidatorHandler.getInstance().getLuxon()
 		this.extractBearerToken = ExtractBearerToken.getInstance()
 		this.findSessionByToken = FindSessionByToken.getInstance()
-		this.requireAdminUser = RequireAdminUser.getInstance()
-		this.authorizeAccountAccess = AuthorizeAccountAccess.getInstance()
+		this.authorizeAdminOrPermission = AuthorizeAdminOrPermission.getInstance()
+		this.dataEncryptHandler = DataEncryptHandler.getInstance()
+		this.hashPassword = HashPassword.getInstance()
 	}
 
 	static getInstance() {
@@ -83,9 +85,20 @@ class UserService {
 
 		// 2. Initial creation
 		const unflattenedBody = Array.isArray(payload) ? payload.map(p => this._unflatten(p)) : this._unflatten(payload)
-		const data = Array.isArray(unflattenedBody)
+		const parsed = Array.isArray(unflattenedBody)
 			? unflattenedBody.map(el => this.userInterface.getCreateInterface().parse(el))
 			: this.userInterface.getCreateInterface().parse(unflattenedBody)
+
+		// La contraseña se cifra acá y no antes de validar, para que el largo máximo que revisa
+		// bcrypt se aplique al texto que escribió la persona y no al hash.
+		//
+		// `trustedRoleAssignment` marca al único llamador interno —el registro autoservicio—, que
+		// ya cifró por su cuenta. Volver a cifrar un hash produce una cuenta que no puede entrar.
+		const data = trustedRoleAssignment
+			? parsed
+			: Array.isArray(parsed)
+				? await Promise.all(parsed.map(el => this._hashPassword(el)))
+				: await this._hashPassword(parsed)
 
 		let user = await this.repository.add('user', { data, options })
 
@@ -136,7 +149,7 @@ class UserService {
 		// alone is not enough, or any customer could read every other account. Skipped for internal
 		// reuse (replace/remove re-reading the record they already authenticated for, and the
 		// trusted AuthenticationService.refresh()/validate() calls, which authenticate via the token)
-		if (!skipAuthCheck) await this._requireSelfOrAdminSession(authorizationHeader, id)
+		if (!skipAuthCheck) await this._requireSelfOrAdminSession(authorizationHeader, id, 'read')
 
 		let virtuals = {}
 		let relations = {}
@@ -156,7 +169,7 @@ class UserService {
 		// 1. Listing the platform's user base is admin-only. There is no ownership scope to fall back
 		// on here the way findOne has: a list request names no account, so "your own" is not an
 		// option - either the caller may see every user or none.
-		await this._requireAdminSession(config.authorizationHeader)
+		await this._requireAdminSession(config.authorizationHeader, 'read')
 
 		let query = {}
 		let virtuals = {}
@@ -269,7 +282,9 @@ class UserService {
 		const destinationPath = envVariables.API_UPLOAD_PATH || path.join(process.cwd(), 'api-uploads')
 
 		// 2. Initial replace with JSON data
-		const payload = this.userInterface.getUpdateInterface().parse(data)
+		const parsed = this.userInterface.getUpdateInterface().parse(data)
+		// En replace la contraseña siempre viene del cliente, así que siempre se cifra.
+		const payload = await this._hashPassword(parsed)
 		let user = await await this.repository.replace('user', { id, data: payload, options })
 
 		const existingObj = existingUser.toObject ? existingUser.toObject() : existingUser;
@@ -374,9 +389,14 @@ class UserService {
 		return repositoryResponse
 	}
 
-	// Authenticates the caller from the access token and requires an admin role - used wherever
-	// a raw model-mutation endpoint would otherwise let a client self-assign a `role`.
-	async _requireAdminSession(authorizationHeader) {
+	// Authenticates the caller and authorizes the operation on the platform's user base: either the
+	// Role is named 'admin', or it grants the requested action on the 'user' resource.
+	//
+	// Gating this on the role NAME alone made user administration impossible to delegate: an
+	// account was either called 'admin' and could do everything, or could do nothing here no
+	// matter what its permissions said. That forces every administrative account to be a full
+	// administrator, which is the opposite of what a permissions catalog is for.
+	async _requireAdminSession(authorizationHeader, action = 'write') {
 		const token = this.extractBearerToken.execute({ authorizationHeader })
 		const session = await this.findSessionByToken.execute({
 			repository: this.repository,
@@ -385,27 +405,59 @@ class UserService {
 			expiryField: 'accessTokenExpiresAt',
 			token
 		})
-		await this.requireAdminUser.execute({ repository: this.repository, userId: session.user })
-	}
-
-	// Authenticates the caller from the access token and allows through only the target account's
-	// own owner or an admin - the ownership rule that PATCH /user/:id already applies through
-	// AccountManagementService, reused here so the raw model endpoints cannot bypass it.
-	async _requireSelfOrAdminSession(authorizationHeader, targetUserId) {
-		const token = this.extractBearerToken.execute({ authorizationHeader })
-		const session = await this.findSessionByToken.execute({
+		await this.authorizeAdminOrPermission.execute({
 			repository: this.repository,
-			luxon: this.luxon,
-			tokenField: 'accessToken',
-			expiryField: 'accessTokenExpiresAt',
-			token
-		})
-		await this.authorizeAccountAccess.execute({
-			repository: this.repository,
-			sessionUserId: session.user,
-			targetUserId
+			userId: session.user,
+			resource: 'user',
+			action
 		})
 		return session
+	}
+
+	// Authenticates the caller and allows through the target account's own owner, an admin, or a
+	// Role that grants the action on 'user'. Se intenta la propiedad primero porque es la vía de
+	// toda cuenta corriente: quien lee o edita lo suyo no necesita ningún permiso del catálogo.
+	async _requireSelfOrAdminSession(authorizationHeader, targetUserId, action = 'write') {
+		const token = this.extractBearerToken.execute({ authorizationHeader })
+		const session = await this.findSessionByToken.execute({
+			repository: this.repository,
+			luxon: this.luxon,
+			tokenField: 'accessToken',
+			expiryField: 'accessTokenExpiresAt',
+			token
+		})
+
+		if (String(session.user) === String(targetUserId)) return session
+
+		await this.authorizeAdminOrPermission.execute({
+			repository: this.repository,
+			userId: session.user,
+			resource: 'user',
+			action
+		})
+		return session
+	}
+
+
+	// Hashes a plain-text `password` present in the payload, leaving everything else untouched.
+	//
+	// Without this, POST/PUT /user store whatever string arrives, and `verifyCredentials` compares
+	// it with bcrypt against a value that is not a bcrypt hash - so the account is created and can
+	// **never** log in. Nothing fails at creation time: the failure surfaces later, as "invalid
+	// email or password" on a password that is in fact correct.
+	//
+	// Quién llama decide si hay que cifrar, en vez de mirar si el valor "parece" un hash: una
+	// contraseña que empezara con el prefijo de bcrypt se guardaría sin cifrar, y ese es
+	// exactamente el caso que un atacante buscaría. El único llamador que trae la contraseña ya
+	// cifrada es AuthenticationService.register(), que lo hace por su cuenta.
+	async _hashPassword(data) {
+		if (!data || typeof data.password !== 'string' || !data.password) return data
+
+		const password = await this.hashPassword.execute({
+			dataEncryptHandler: this.dataEncryptHandler,
+			password: data.password
+		})
+		return { ...data, password }
 	}
 
 	applayContract(payload) {

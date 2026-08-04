@@ -32,9 +32,9 @@ function seed() {
 	return repo
 }
 
-async function seedSession(repository, { roleName, accessToken }) {
+async function seedSession(repository, { roleName, accessToken, permissions = [] }) {
 	const { DateTime } = luxon
-	const role = await repository.add('role', { data: { name: roleName, active: true } })
+	const role = await repository.add('role', { data: { name: roleName, active: true, permissions } })
 	const user = await repository.add('user', { data: { name: 'Root', email: `${roleName}@example.com`, password: 'hash', role: String(role._id), active: true } })
 	await repository.add('session', {
 		data: {
@@ -273,4 +273,94 @@ test('user service remove() — throws when called without an admin session', as
 	const service = UserService.getInstance()
 
 	await assert.rejects(() => service.remove({ id: SEED_ID }), { name: 'UnauthorizedError' })
+})
+
+// ── Delegación por permiso ─────────────────────────────────────────────────
+// Administrar usuarios ya no exige llamarse 'admin': un rol con el permiso concedido alcanza. Es
+// lo que permite tener un administrador acotado que no pueda, por ejemplo, crear roles.
+
+function seedDelegatedSession(repository, permissions) {
+	return seedSession(repository, { roleName: 'operaciones', accessToken: 'delegated-access-token', permissions })
+}
+
+test('user service list() — un rol no admin con read sobre "user" puede listar', async () => {
+	const repository = seed()
+	await seedDelegatedSession(repository, [{ resource: 'user', read: true, write: false }])
+	const service = UserService.getInstance()
+
+	const result = await service.list({ authorizationHeader: 'Bearer delegated-access-token' })
+
+	assert.equal(result.count, 2)
+})
+
+test('user service add() — read sobre "user" no alcanza para crear', async () => {
+	const repository = MockRepository.getInstance()
+	await seedDelegatedSession(repository, [{ resource: 'user', read: true, write: false }])
+	const service = UserService.getInstance()
+
+	await assert.rejects(
+		() => service.add({ body: SAMPLE, authorizationHeader: 'Bearer delegated-access-token' }),
+		{ name: 'ForbiddenError' }
+	)
+})
+
+test('user service add() — write sobre "user" sí alcanza para crear', async () => {
+	const repository = MockRepository.getInstance()
+	await seedDelegatedSession(repository, [{ resource: 'user', read: true, write: true }])
+	const service = UserService.getInstance()
+
+	const result = await service.add({ body: SAMPLE, authorizationHeader: 'Bearer delegated-access-token' })
+
+	assert.equal(typeof result._id, 'string')
+})
+
+test('user service list() — sin permiso sobre "user" sigue siendo 403', async () => {
+	const repository = seed()
+	await seedDelegatedSession(repository, [{ resource: 'item', read: true, write: true }])
+	const service = UserService.getInstance()
+
+	await assert.rejects(
+		() => service.list({ authorizationHeader: 'Bearer delegated-access-token' }),
+		{ name: 'ForbiddenError' }
+	)
+})
+
+// ── Cifrado de la contraseña ───────────────────────────────────────────────
+// POST/PUT /user guardaban el texto tal cual, y `verifyCredentials` lo compara con bcrypt: la
+// cuenta quedaba creada y **nunca** podía entrar. No fallaba al crearla — fallaba después, como
+// "correo o contraseña incorrectos" sobre una contraseña que en realidad era la correcta.
+
+test('user service add() — guarda la contraseña cifrada, no en texto plano', async () => {
+	const repository = MockRepository.getInstance()
+	await seedAdminSession(repository)
+	const service = UserService.getInstance()
+
+	const result = await service.add({ body: { ...SAMPLE, password: 'Secreta.2026' }, authorizationHeader: 'Bearer admin-access-token' })
+
+	const stored = (await repository.list('user', { query: { _id: result._id } })).records[0]
+	assert.notEqual(stored.password, 'Secreta.2026')
+	assert.match(stored.password, /^\$2[aby]?\$/)
+})
+
+test('user service add() — el registro autoservicio trae la contraseña ya cifrada y no se re-cifra', async () => {
+	const repository = MockRepository.getInstance()
+	const alreadyHashed = '$2a$12$abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTU'
+	const service = UserService.getInstance()
+
+	// Es el camino de POST /auth/register: cifra por su cuenta y lo declara con trustedRoleAssignment.
+	const result = await service.add({ body: { ...SAMPLE, password: alreadyHashed }, trustedRoleAssignment: true })
+
+	const stored = (await repository.list('user', { query: { _id: result._id } })).records[0]
+	assert.equal(stored.password, alreadyHashed)
+})
+
+test('user service replace() — también cifra la contraseña', async () => {
+	const repository = seed()
+	await seedAdminSession(repository)
+	const service = UserService.getInstance()
+
+	await service.replace({ id: SEED_ID, body: { ...SAMPLE, password: 'Otra.2026' }, authorizationHeader: 'Bearer admin-access-token' })
+
+	const stored = (await repository.list('user', { query: { _id: SEED_ID } })).records[0]
+	assert.match(stored.password, /^\$2[aby]?\$/)
 })

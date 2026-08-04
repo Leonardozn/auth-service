@@ -18,6 +18,10 @@ const SAMPLE = {
 
 const SEED_ID = '64b0c0ffee1234567890abce'
 
+// El contrato de Role SÍ expone _id: sin él, PUT/PATCH/DELETE de /role no se pueden invocar
+// desde ningún cliente, porque no habría con qué identificar el registro.
+const EXPECTED = { _id: SEED_ID, ...SAMPLE }
+
 function seed() {
 	const repo = MockRepository.getInstance()
 	const now = new Date().toISOString()
@@ -25,9 +29,9 @@ function seed() {
 	return repo
 }
 
-async function seedSession(repository, { roleName, accessToken }) {
+async function seedSession(repository, { roleName, accessToken, permissions = [] }) {
 	const { DateTime } = luxon
-	const role = await repository.add('role', { data: { name: roleName, active: true } })
+	const role = await repository.add('role', { data: { name: roleName, active: true, permissions } })
 	const user = await repository.add('user', { data: { name: 'Root', email: `${roleName}@example.com`, password: 'hash', role: String(role._id), active: true } })
 	await repository.add('session', {
 		data: {
@@ -64,7 +68,10 @@ test('role service add() — creates and returns the contract-filtered record, a
 
 	const result = await service.add({ body: SAMPLE, authorizationHeader: 'Bearer admin-access-token' })
 
-	assert.deepEqual(result, SAMPLE)
+	// El id lo genera el repositorio al crear, así que se compara contra el del resultado y no
+	// contra el sembrado.
+	assert.equal(typeof result._id, 'string')
+	assert.deepEqual(result, { ...SAMPLE, _id: result._id })
 })
 
 test('role service add() — throws when called without an admin session', async () => {
@@ -91,7 +98,7 @@ test('role service findOne() — returns the contract-filtered record by id, for
 
 	const result = await service.findOne({ id: SEED_ID, authorizationHeader: 'Bearer user-access-token' })
 
-	assert.deepEqual(result, SAMPLE)
+	assert.deepEqual(result, EXPECTED)
 })
 
 test('role service findOne() — throws without any session', async () => {
@@ -135,7 +142,7 @@ test('role service update() — patches and returns the contract-filtered record
 
 	const result = await service.update({ id: SEED_ID, body: SAMPLE, authorizationHeader: 'Bearer admin-access-token' })
 
-	assert.deepEqual(result, SAMPLE)
+	assert.deepEqual(result, EXPECTED)
 })
 
 test('role service update() — throws when called without an admin session', async () => {
@@ -152,7 +159,7 @@ test('role service replace() — replaces and returns the contract-filtered reco
 
 	const result = await service.replace({ id: SEED_ID, body: SAMPLE, authorizationHeader: 'Bearer admin-access-token' })
 
-	assert.deepEqual(result, SAMPLE)
+	assert.deepEqual(result, EXPECTED)
 })
 
 test('role service replace() — throws when called without an admin session', async () => {
@@ -179,4 +186,55 @@ test('role service remove() — throws when called without an admin session', as
 	const service = RoleService.getInstance()
 
 	await assert.rejects(() => service.remove({ id: SEED_ID }), { name: 'UnauthorizedError' })
+})
+
+// ── Delegación por permiso ─────────────────────────────────────────────────
+// Antes, administrar roles exigía que el Role se llamara literalmente 'admin', así que no había
+// forma de tener un administrador de catálogo que NO pudiera crear roles. Ahora también pasa un
+// rol que lo tenga concedido en su catálogo de permisos.
+
+function seedDelegatedSession(repository, permissions) {
+	return seedSession(repository, { roleName: 'operaciones', accessToken: 'delegated-access-token', permissions })
+}
+
+test('role service add() — un rol no admin con write sobre "role" puede crear', async () => {
+	const repository = MockRepository.getInstance()
+	await seedDelegatedSession(repository, [{ resource: 'role', read: true, write: true }])
+	const service = RoleService.getInstance()
+
+	const result = await service.add({ body: SAMPLE, authorizationHeader: 'Bearer delegated-access-token' })
+
+	assert.equal(typeof result._id, 'string')
+})
+
+test('role service add() — un rol no admin con solo read sobre "role" NO puede crear', async () => {
+	const repository = MockRepository.getInstance()
+	await seedDelegatedSession(repository, [{ resource: 'role', read: true, write: false }])
+	const service = RoleService.getInstance()
+
+	await assert.rejects(
+		() => service.add({ body: SAMPLE, authorizationHeader: 'Bearer delegated-access-token' }),
+		{ name: 'ForbiddenError' }
+	)
+})
+
+test('role service remove() — un rol no admin con write sobre "role" puede eliminar', async () => {
+	const repository = seed()
+	await seedDelegatedSession(repository, [{ resource: 'role', read: true, write: true }])
+	const service = RoleService.getInstance()
+
+	const result = await service.remove({ id: SEED_ID, authorizationHeader: 'Bearer delegated-access-token' })
+
+	assert.equal(result.deletedCount, 1)
+})
+
+test('role service remove() — un permiso sobre OTRO recurso no sirve', async () => {
+	const repository = seed()
+	await seedDelegatedSession(repository, [{ resource: 'item', read: true, write: true }])
+	const service = RoleService.getInstance()
+
+	await assert.rejects(
+		() => service.remove({ id: SEED_ID, authorizationHeader: 'Bearer delegated-access-token' }),
+		{ name: 'ForbiddenError' }
+	)
 })
