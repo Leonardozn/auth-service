@@ -306,6 +306,17 @@ const AuthController = require('../controllers/auth')
  *       Always responds 200 with `content: null`, whether or not the email exists - this
  *       endpoint must never reveal account existence. A delivery failure from the email
  *       provider (Resend) is also swallowed and still returns 200.
+ *
+ *       `resetUrlBase` lets the calling frontend say where the recovery link should land, because
+ *       this service is shared by more than one application and a single configured base can only
+ *       ever be right for one of them. It is honoured **only** when it appears in
+ *       `PASSWORD_RESET_ALLOWED_URL_BASES` (the configured `PASSWORD_RESET_URL_BASE` always counts
+ *       as allowed); anything else is a 400. An empty allow list means only the default is accepted,
+ *       never "anything goes" - whoever picks the link in that email picks where a working,
+ *       single-use reset token gets delivered.
+ *
+ *       The 400 is raised **before** the email is looked up, so rejecting a base never depends on
+ *       whether the account exists - otherwise the error would leak exactly what this endpoint hides.
  *     requestBody:
  *       required: true
  *       content:
@@ -315,13 +326,21 @@ const AuthController = require('../controllers/auth')
  *             required: [email]
  *             properties:
  *               email: { type: string }
- *           example: { email: "ada@example.com" }
+ *               resetUrlBase:
+ *                 type: string
+ *                 description: Base URL for the recovery link. Must be on the allow list.
+ *           example: { email: "ada@example.com", resetUrlBase: "http://localhost:8081/reset-password" }
  *     responses:
  *       200:
  *         description: Request accepted (regardless of whether the email exists)
  *         content:
  *           application/json:
  *             example: { success: true, message: "Success!", statusCode: 200, content: null }
+ *       400:
+ *         description: The requested reset URL base is not on the allow list
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Reset URL base is not allowed.", statusCode: 400, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }

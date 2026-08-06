@@ -234,6 +234,55 @@ test('AccountManagementService.forgotPassword() — responds successfully withou
 	assert.equal(tokens.count, 0)
 })
 
+// Cierra el lazo: no alcanza con que el destino se acepte, tiene que ser el que termina en el enlace.
+test('AccountManagementService.forgotPassword() — the allowed base is the one that ends up in the link', async () => {
+	const repository = MockRepository.getInstance()
+	await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	const mockEmail = MockEmailManager.getInstance()
+	let capturedSend
+	mockEmail.send = async (config) => { capturedSend = config; return { id: 'mock-email-id' } }
+	const service = AccountManagementService.getInstance()
+
+	// El default de este servicio sin .env es `http://localhost:5173/reset-password`, así que pedirlo
+	// explícitamente prueba el camino del parámetro y no el del fallback.
+	await service.forgotPassword({
+		body: { email: 'ada@example.com', resetUrlBase: 'http://localhost:5173/reset-password' }
+	})
+
+	const tokens = await repository.list('password_reset_token', { query: {} })
+	assert.ok(capturedSend.html.includes(`http://localhost:5173/reset-password?token=${tokens.records[0].token}`))
+})
+
+test('AccountManagementService.forgotPassword() — rejects a reset URL base that is not allowed', async () => {
+	const repository = MockRepository.getInstance()
+	await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })
+	const mockEmail = MockEmailManager.getInstance()
+	let sendCalled = false
+	mockEmail.send = async () => { sendCalled = true; return { id: 'mock-email-id' } }
+	const service = AccountManagementService.getInstance()
+
+	await assert.rejects(
+		() => service.forgotPassword({ body: { email: 'ada@example.com', resetUrlBase: 'https://phishing.example/reset' } }),
+		{ name: 'BadRequestError' }
+	)
+
+	// Nothing was sent and no token exists: the check runs before the account is even looked up.
+	assert.equal(sendCalled, false)
+	const tokens = await repository.list('password_reset_token', { query: {} })
+	assert.equal(tokens.count, 0)
+})
+
+// The rejection must not depend on the email existing, or the error itself would answer the very
+// question this endpoint refuses to answer.
+test('AccountManagementService.forgotPassword() — rejects a disallowed base the same way for an unknown email', async () => {
+	const service = AccountManagementService.getInstance()
+
+	await assert.rejects(
+		() => service.forgotPassword({ body: { email: 'missing@example.com', resetUrlBase: 'https://phishing.example/reset' } }),
+		{ name: 'BadRequestError' }
+	)
+})
+
 test('AccountManagementService.forgotPassword() — still responds successfully when the email fails to send', async () => {
 	const repository = MockRepository.getInstance()
 	await repository.add('user', { data: { name: 'Ada', email: 'ada@example.com', password: 'hash', role: '64b0c0ffee1234567890abcd' } })

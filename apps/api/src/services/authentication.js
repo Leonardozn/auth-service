@@ -29,6 +29,7 @@ const EnforceConfirmationCodeCooldown = require('./commands/enforceConfirmationC
 const InvalidatePendingConfirmationCodes = require('./commands/invalidatePendingConfirmationCodes')
 const IssueConfirmationCode = require('./commands/issueConfirmationCode')
 const SendConfirmationCodeEmail = require('./commands/sendConfirmationCodeEmail')
+const ResolveEmailBrand = require('./commands/resolveEmailBrand')
 const CreateSessionForUser = require('./commands/createSessionForUser')
 const EnforceLoginRecordLimit = require('./commands/enforceLoginRecordLimit')
 const WriteLoginRecord = require('./commands/writeLoginRecord')
@@ -71,6 +72,7 @@ class AuthenticationService {
 		this.invalidatePendingConfirmationCodes = InvalidatePendingConfirmationCodes.getInstance()
 		this.issueConfirmationCode = IssueConfirmationCode.getInstance()
 		this.sendConfirmationCodeEmail = SendConfirmationCodeEmail.getInstance()
+		this.resolveEmailBrand = ResolveEmailBrand.getInstance()
 		this.createSessionForUser = CreateSessionForUser.getInstance()
 		this.enforceLoginRecordLimit = EnforceLoginRecordLimit.getInstance()
 		this.writeLoginRecord = WriteLoginRecord.getInstance()
@@ -186,8 +188,7 @@ class AuthenticationService {
 			to: email,
 			code,
 			expiresInSeconds,
-			brandName: envVariables.BRAND_NAME || 'Your account',
-			brandLogoUrl: envVariables.BRAND_LOGO_URL || ''
+			...this.resolveEmailBrand.execute()
 		})
 
 		// No session is opened here, and no LoginRecord is written - registering isn't logging in;

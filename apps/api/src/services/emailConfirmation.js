@@ -16,6 +16,7 @@ const InvalidatePendingConfirmationCodes = require('./commands/invalidatePending
 const IssueConfirmationCode = require('./commands/issueConfirmationCode')
 const FindValidConfirmationCode = require('./commands/findValidConfirmationCode')
 const SendConfirmationCodeEmail = require('./commands/sendConfirmationCodeEmail')
+const ResolveEmailBrand = require('./commands/resolveEmailBrand')
 const CreateSessionForUser = require('./commands/createSessionForUser')
 const EnforceSessionLimit = require('./commands/enforceSessionLimit')
 const IssueTokenPair = require('./commands/issueTokenPair')
@@ -52,6 +53,7 @@ class EmailConfirmationService {
 		this.issueConfirmationCode = IssueConfirmationCode.getInstance()
 		this.findValidConfirmationCode = FindValidConfirmationCode.getInstance()
 		this.sendConfirmationCodeEmail = SendConfirmationCodeEmail.getInstance()
+		this.resolveEmailBrand = ResolveEmailBrand.getInstance()
 		this.createSessionForUser = CreateSessionForUser.getInstance()
 		this.enforceSessionLimit = EnforceSessionLimit.getInstance()
 		this.issueTokenPair = IssueTokenPair.getInstance()
@@ -120,8 +122,7 @@ class EmailConfirmationService {
 			to: email,
 			code,
 			expiresInSeconds,
-			brandName: envVariables.BRAND_NAME || 'Your account',
-			brandLogoUrl: envVariables.BRAND_LOGO_URL || ''
+			...this.resolveEmailBrand.execute()
 		})
 
 		return { expiresInSeconds }
