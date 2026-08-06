@@ -52,7 +52,11 @@ class AccountManagementInterfaces {
 		})
 
 		this.forgotPasswordInterface = this.dataValidatorHandler.validate({
-			email: { type: this.types.string }
+			email: { type: this.types.string },
+			// Which frontend the recovery link should point at. Optional: without it the service
+			// falls back to its configured default. Whether the requested base is honoured is *not*
+			// decided here - see ResolvePasswordResetUrlBase, which checks it against an allow list.
+			resetUrlBase: { type: this.types.string, optional: true }
 		})
 
 		this.resetPasswordInterface = this.dataValidatorHandler.validate({
