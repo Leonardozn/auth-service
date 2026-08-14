@@ -7,22 +7,34 @@ const UserController = require('../controllers/user')
  *     description: |
  *       User account records. Every route requires `Authorization: Bearer <access token>`
  *       except self-service registration (`POST /auth/register`, which always assigns the
- *       default "user" role, no admin needed). `POST`/`PUT` create/replace a user directly and
- *       accept every field, including `role` - assigning a `role` through either of them
- *       additionally requires an admin session, to prevent a caller from self-escalating
- *       privileges. `DELETE` is admin-only. `GET` (list/findOne) only requires being
- *       authenticated, any role. `PATCH` is wired to account management (edit own profile, or
- *       an admin editing anyone) and never accepts `role` or `password`.
+ *       default "user" role, no admin needed).
+ *
+ *       **A session alone is never enough on these routes** - every one of them additionally
+ *       requires either an admin role or ownership of the account being acted on. The reason is
+ *       that consumers of this service hand a session to every visitor who registers, so
+ *       "authenticated" describes the general public, not staff.
+ *
+ *       - `POST` (create a user directly) and `GET` list are **admin-only**. A listing names no
+ *         account, so ownership is not an option there: either the caller may see every user or
+ *         none.
+ *       - `GET /{id}` and `PUT` are limited to **the account's own owner or an admin**. `PUT`
+ *         accepts `email`, so without this an authenticated caller could point another account
+ *         at their own inbox and claim it through `POST /auth/forgot-password`.
+ *       - Assigning a `role` through `POST`/`PUT` requires an admin session on top, to prevent a
+ *         caller from self-escalating privileges.
+ *       - `DELETE` is admin-only.
+ *       - `PATCH` is wired to account management (edit own profile, or an admin editing anyone)
+ *         and never accepts `role` or `password`.
  *
  * /user:
  *   post:
  *     tags: [User]
  *     summary: Create a user
  *     description: |
- *       Requires `Authorization: Bearer <access token>` - every field is otherwise optional at
- *       the schema level. Including `role` additionally requires the caller's session to belong
- *       to a user whose Role is named "admin", otherwise the request is rejected before the
- *       record is created.
+ *       Requires `Authorization: Bearer <admin access token>` - creating an account directly is
+ *       an administrative act whatever the payload says, so omitting `role` does not lower the
+ *       bar. Self-service signup is `POST /auth/register`, not this route. Every field is
+ *       otherwise optional at the schema level.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -69,7 +81,9 @@ const UserController = require('../controllers/user')
  *     tags: [User]
  *     summary: List users
  *     description: |
- *       Requires `Authorization: Bearer <access token>` - any authenticated role can list users.
+ *       Requires `Authorization: Bearer <admin access token>` - admin-only. A listing names no
+ *       account, so there is no ownership scope to fall back on: either the caller may see the
+ *       whole user base, names and emails included, or none of it.
  *       Paginated list with filtering, operators, sorting and pagination.
  *         - Equality filter:  `query[field]=value`            (e.g. query[name]=Ada)
  *         - Operator filter:  `query[field][operator]=value`  (e.g. query[active][eq]=true)
@@ -120,6 +134,11 @@ const UserController = require('../controllers/user')
  *         content:
  *           application/json:
  *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
+ *       403:
+ *         description: The caller's session does not belong to an admin
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Not authorized to perform this action.", statusCode: 403, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
@@ -129,7 +148,8 @@ const UserController = require('../controllers/user')
  *     tags: [User]
  *     summary: Get a user by id
  *     description: |
- *       Requires `Authorization: Bearer <access token>` - any authenticated role can read a user.
+ *       Requires `Authorization: Bearer <access token>` belonging to **the account's own owner
+ *       or to an admin**. Any other authenticated caller gets 403.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -158,6 +178,11 @@ const UserController = require('../controllers/user')
  *         content:
  *           application/json:
  *             example: { success: false, message: "Missing or malformed Authorization header.", statusCode: 401, content: null }
+ *       403:
+ *         description: The caller is neither the account's owner nor an admin
+ *         content:
+ *           application/json:
+ *             example: { success: false, message: "Not authorized to access this account.", statusCode: 403, content: null }
  *       500:
  *         description: Unexpected server error
  *         content: { application/json: { example: { success: false, message: "An error occurred", statusCode: 500, content: null } } }
@@ -166,7 +191,10 @@ const UserController = require('../controllers/user')
  *     summary: Replace a user
  *     description: |
  *       Full replace - fields omitted from the body are cleared, not left untouched. Requires
- *       `Authorization: Bearer <access token>`. Just like `POST /user`, additionally including
+ *       `Authorization: Bearer <access token>` belonging to **the account's own owner or to an
+ *       admin**; any other authenticated caller gets 403. The body accepts `email`, so without
+ *       that restriction a caller could redirect another account to their own inbox and take it
+ *       over through `POST /auth/forgot-password`. Just like `POST /user`, additionally including
  *       `role` in the body requires an admin session.
  *     security:
  *       - bearerAuth: []
