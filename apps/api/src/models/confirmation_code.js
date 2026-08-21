@@ -54,9 +54,10 @@ class ConfirmationCodeModel {
 			}
 		})
 
-		// TTL index: Mongo deletes a code once its own expiresAt passes, so expired codes never
-		// accumulate - no scheduled cleanup job needed.
-		this.confirmation_codeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
+		// No TTL index here on purpose: MongoDB no longer deletes anything on its own. An expired
+		// code is already rejected by the validation, which compares expiresAt against the current
+		// time - so letting it stay in the collection changes nothing for security, only storage.
+		// See decisions/scheduled-purge-over-ttl-indexes.
 	}
 
 	static getInstance() {
