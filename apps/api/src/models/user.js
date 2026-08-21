@@ -54,11 +54,11 @@ class UserModel {
 			}
 		})
 
-		// TTL index: an account never confirmed is deleted once unconfirmedExpiresAt passes. Mongo
-		// ignores this index on documents where the field is absent or not a Date, which is exactly
-		// what happens once a user confirms (the field is unset) or for legacy users who never had
-		// it - so this never touches confirmed accounts.
-		this.userSchema.index({ unconfirmedExpiresAt: 1 }, { expireAfterSeconds: 0 })
+		// Plain index, NOT a TTL one: unconfirmed accounts are purged by an explicit process, still
+		// to be defined - MongoDB no longer deletes anything on its own here. The index stays
+		// because that process finds its candidates by this field (unconfirmedExpiresAt < now).
+		// See decisions/scheduled-purge-over-ttl-indexes.
+		this.userSchema.index({ unconfirmedExpiresAt: 1 })
 	}
 
 	static getInstance() {
